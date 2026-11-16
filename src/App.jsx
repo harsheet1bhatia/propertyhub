@@ -46,7 +46,8 @@ function App() {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState(null)
   const [loading, setLoading] = useState(!isPublic)
-  const [email, setEmail] = useState('')
+const [email, setEmail] = useState('')
+const [password, setPassword] = useState('')
 const [newPassword, setNewPassword] = useState('')
 const [confirmPassword, setConfirmPassword] = useState('')
   const [properties, setProperties] = useState([])
@@ -64,7 +65,7 @@ const [confirmPassword, setConfirmPassword] = useState('')
   const [adminEmail, setAdminEmail] = useState('')
   const [admins, setAdmins] = useState([])
 
-  const isAdmin = role === 'admin' || role === 'super_admin'
+const isSuperAdmin = role === 'super_admin'
   const isPasswordSetup =
   new URLSearchParams(window.location.search).get('set-password') === '1'
 
@@ -261,7 +262,31 @@ const setAdminPassword = async (e) => {
 
     setAdmins(updatedAdmins || []);
   };
+const removeAdmin = async (admin) => {
+  if (!isSuperAdmin || admin.role === 'super_admin') return
 
+  const confirmDelete = window.confirm(
+    `Are you sure you want to remove ${admin.email}?`
+  )
+
+  if (!confirmDelete) return
+
+  const { error } = await supabase
+    .from('propertyhub_admins')
+    .delete()
+    .eq('user_id', admin.user_id)
+
+  if (error) {
+    alert('Could not remove admin: ' + error.message)
+    return
+  }
+
+  setAdmins(prev =>
+    prev.filter(item => item.user_id !== admin.user_id)
+  )
+
+  alert('Admin removed successfully.')
+}
   const sharePublicLink = async () => {
     const link = `${window.location.origin}/?public=1`
 
