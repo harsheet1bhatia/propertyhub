@@ -57,6 +57,36 @@ function formatRent(rent) {
 
 }
 
+function phoneHref(phone) {
+  const cleaned = String(phone || '').trim().replace(/(?!^)\+/g, '').replace(/[^0-9+]/g, '')
+  return cleaned ? `tel:${cleaned}` : undefined
+}
+
+async function copyPropertyText(property) {
+  const message = [
+    `Sector: ${property.sector || 'N/A'}`,
+    `Property: ${property.id || 'N/A'} (${property.type || 'N/A'})`,
+    `Rent: ${formatRent(property.rent)}`,
+    `Location: ${property.location || 'N/A'}`,
+    `Map: ${property.map || 'Not available'}`,
+    `Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
+  ].join('\n')
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) await navigator.clipboard.writeText(message)
+    else throw new Error('Clipboard API unavailable')
+    alert('Property details copied. Paste them wherever you want.')
+  } catch {
+    const area = document.createElement('textarea')
+    area.value = message
+    area.style.position = 'fixed'; area.style.opacity = '0'
+    document.body.appendChild(area); area.select()
+    const copied = document.execCommand('copy')
+    area.remove()
+    if (copied) alert('Property details copied.')
+    else window.prompt('Copy property details:', message)
+  }
+}
+
 
 
 // Convert a database row into the object used by the UI
@@ -254,117 +284,60 @@ function Pagination({ currentPage, totalPages, setCurrentPage, itemsPerPage, set
 
 
 function PropertyTable({ rows, onView, publicView }) {
+  if (publicView) {
+    return (
+      <div className="property-mobile-cards public-property-grid">
+        {rows.map(property => {
+          const allPhotos = (property.media_urls || []).filter(url => !isVideo(url))
+          const photos = allPhotos.slice(0, 4)
+          return (
+            <article className="public-property-card" key={`public-${property.id}`}>
+              <button className={`property-photo-collage collage-count-${photos.length}`} onClick={() => onView(property)} aria-label={`Open property ${property.id} photos`}>
+                {photos.length ? photos.map((url, index) => (
+                  <span className="collage-photo" key={`${url}-${index}`}>
+                    <img src={url} alt={`Property ${property.id} photo ${index + 1}`} loading="lazy" />
+                    {index === 3 && allPhotos.length > 4 && <b>+{allPhotos.length - 4}</b>}
+                  </span>
+                )) : <span className="collage-empty">No photos available</span>}
+              </button>
+              <div className="public-property-card-content">
+                <div className="public-property-card-title">
+                  <div><small>{property.sector || 'Property'}</small><h3>#{property.id} · {property.type}</h3></div>
+                  <strong>{formatRent(property.rent)}<small>/ month</small></strong>
+                </div>
+                <p>{property.location || 'Location not added'}</p>
+                <div className="public-card-actions">
+                  <button className="add-button" onClick={() => onView(property)}>View Property</button>
+                  <button className="cancel-button" onClick={() => copyPropertyText(property)}>Copy Details</button>
+                </div>
+                {property.phone && <a className="public-call-link" href={phoneHref(property.phone)}>Call Caretaker · {property.phone}</a>}
+              </div>
+            </article>
+          )
+        })}
+        {!rows.length && <p className="public-empty-state">No properties found.</p>}
+      </div>
+    )
+  }
 
   return (
-
-    <>
-
-    {publicView && <div className="property-mobile-cards">
-      {rows.map(property => {
-        const allPhotos = (property.media_urls || []).filter(url => !isVideo(url))
-        const photos = allPhotos.slice(0, 4)
-        return <article className="public-property-card" key={`mobile-${property.id}`}>
-          <button className={`property-photo-collage collage-count-${photos.length}`} onClick={() => onView(property)} aria-label={`View photos for property ${property.id}`}>
-            {photos.length ? photos.map((url, index) => <span className="collage-photo" key={url}><img src={url} alt={`Property ${property.id} photo ${index + 1}`} />{index === 3 && allPhotos.length > 4 && <b>+{allPhotos.length - 4}</b>}</span>) : <span className="collage-empty">No photos available</span>}
-          </button>
-          <div className="public-property-card-content">
-            <div className="public-property-card-title"><div><small>{property.sector || 'Property'}</small><h3>#{property.id} · {property.type}</h3></div><strong>{formatRent(property.rent)}<small>/ month</small></strong></div>
-            <p>{property.location || 'Location not added'}</p>
-            <button className="add-button" onClick={() => onView(property)}>View Property</button>
-          </div>
-        </article>
-      })}
-      {!rows.length && <p className="public-empty-state">No properties found.</p>}
-    </div>}
-
-    <div className={`table-wrap ${publicView ? 'public-desktop-table' : ''}`}>
-
-
+    <div className="table-wrap">
       <table>
-
-        <thead>
-
-          <tr>
-
-            <th>SECTOR</th>
-
-            <th>PROPERTY</th>
-
-            <th>LOCATION</th>
-
-            <th>TYPE</th>
-
-            <th>{publicView ? 'RENT' : 'MONTHLY RENT'}</th>
-
-            <th>CARETAKER</th>
-
-            <th>PHONE</th>
-
-            <th>DETAILS</th>
-
-          </tr>
-
-        </thead>
-
+        <thead><tr><th>SECTOR</th><th>PROPERTY</th><th>LOCATION</th><th>TYPE</th><th>MONTHLY RENT</th><th>CARETAKER</th><th>PHONE</th><th>DETAILS</th></tr></thead>
         <tbody>
-
           {rows.map(property => (
-
             <tr key={property.id}>
-
-              <td>{property.sector}</td>
-
-              <td><strong>#{property.id}</strong></td>
-
-              <td>{property.location || 'Not added'}</td>
-
-              <td>{property.type}</td>
-
-              <td>{formatRent(property.rent)}</td>
-
-              <td>{property.caretaker || 'Not added'}</td>
-
-              <td>
-
-                {property.phone
-
-                  ? <a href={`tel:${property.phone}`}>{property.phone}</a>
-
-                  : 'Not added'}
-
-              </td>
-
-              <td>
-
-                <button className="action-link" onClick={() => onView(property)}>View</button>
-
-              </td>
-
+              <td>{property.sector}</td><td><strong>#{property.id}</strong></td><td>{property.location || 'Not added'}</td><td>{property.type}</td><td>{formatRent(property.rent)}</td><td>{property.caretaker || 'Not added'}</td>
+              <td>{property.phone ? <a href={phoneHref(property.phone)}>{property.phone}</a> : 'Not added'}</td>
+              <td><button className="action-link" onClick={() => onView(property)}>View</button></td>
             </tr>
-
           ))}
-
-
-
-          {!rows.length && (
-
-            <tr><td colSpan="8">No properties found.</td></tr>
-
-          )}
-
+          {!rows.length && <tr><td colSpan="8">No properties found.</td></tr>}
         </tbody>
-
       </table>
-
     </div>
-
-    </>
-
   )
-
 }
-
-
 
 function DetailsModal({
 
@@ -376,22 +349,7 @@ function DetailsModal({
 
   const urls = property.media_urls || []
   const photoUrls = urls.filter(url => !isVideo(url))
-  const copyPropertyDetails = async () => {
-    const message = [
-      `Sector: ${property.sector || 'N/A'}`,
-      `Property: ${property.id || 'N/A'} (${property.type || 'N/A'})`,
-      `Rent: ${formatRent(property.rent)}`,
-      `Location: ${property.location || 'N/A'}`,
-      `Map: ${property.map || 'Not available'}`,
-      `Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
-    ].join('\n')
-    try {
-      await navigator.clipboard.writeText(message)
-      alert('Property details copied.')
-    } catch {
-      window.prompt('Copy property details:', message)
-    }
-  }
+  const copyPropertyDetails = () => copyPropertyText(property)
 
 
 
@@ -426,7 +384,7 @@ function DetailsModal({
 
           <div><small>Caretaker</small><strong>{property.caretaker || 'Not added'}</strong></div>
 
-          <div><small>Phone</small><strong>{property.phone ? <a href={`tel:${property.phone}`}>{property.phone} · Call</a> : 'Not added'}</strong></div>
+          <div><small>Phone</small><strong>{property.phone ? <a href={phoneHref(property.phone)}>{property.phone} · Call</a> : 'Not added'}</strong></div>
 
         </div>
 
@@ -609,7 +567,7 @@ function DetailsModal({
 
           )}
 
-          {property.phone && <a className="add-button" href={`tel:${property.phone}`}>Call Caretaker</a>}
+          {property.phone && <a className="add-button" href={phoneHref(property.phone)}>Call Caretaker</a>}
 
           {property.map && <a className="action-link" href={property.map} target="\_blank" rel="noreferrer">Open Map ↗</a>}
 
@@ -632,11 +590,12 @@ function ImagePreview({ images, initialIndex = 0, onClose }) {
   const touchStartX = useState(null)
   const current = images[index]
   const move = (direction) => setIndex(prev => Math.max(0, Math.min(images.length - 1, prev + direction)))
-  const handleTouchStart = (event) => { touchStartX[1](event.touches[0].clientX) }
+  const handleTouchStart = (event) => { touchStartX[1](event.touches?.[0]?.clientX ?? null) }
   const handleTouchEnd = (event) => {
     if (touchStartX[0] == null) return
-    const delta = event.changedTouches[0].clientX - touchStartX[0]
-    if (Math.abs(delta) > 45) move(delta < 0 ? 1 : -1)
+    const endX = event.changedTouches?.[0]?.clientX
+    const delta = typeof endX === 'number' ? endX - touchStartX[0] : 0
+    if (Math.abs(delta) >= 35) move(delta < 0 ? 1 : -1)
     touchStartX[1](null)
   }
   useEffect(() => {
@@ -654,7 +613,7 @@ function ImagePreview({ images, initialIndex = 0, onClose }) {
     <div className="image-preview-overlay" onClick={onClose} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <button className="preview-close" onClick={onClose}>×</button>
       <button className="preview-nav preview-prev" onClick={e => { e.stopPropagation(); move(-1) }} disabled={index === 0}>‹</button>
-      <div className="preview-content" onClick={e => e.stopPropagation()}>
+      <div className="preview-content" onClick={e => e.stopPropagation()} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <img src={current.url} alt={`Property ${current.propertyId} photo ${index + 1}`} />
         <p>Property #{current.propertyId} · {index + 1} / {images.length}</p>
       </div>
