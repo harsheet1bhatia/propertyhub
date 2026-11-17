@@ -283,7 +283,28 @@ function PropertyTable({ rows, onView, publicView }) {
 
   return (
 
-    <div className="table-wrap">
+    <>
+
+    {publicView && <div className="property-mobile-cards">
+      {rows.map(property => {
+        const allPhotos = (property.media_urls || []).filter(url => !isVideo(url))
+        const photos = allPhotos.slice(0, 4)
+        return <article className="public-property-card" key={`mobile-${property.id}`}>
+          <button className={`property-photo-collage collage-count-${photos.length}`} onClick={() => onView(property)} aria-label={`View photos for property ${property.id}`}>
+            {photos.length ? photos.map((url, index) => <span className="collage-photo" key={url}><img src={url} alt={`Property ${property.id} photo ${index + 1}`} />{index === 3 && allPhotos.length > 4 && <b>+{allPhotos.length - 4}</b>}</span>) : <span className="collage-empty">No photos available</span>}
+          </button>
+          <div className="public-property-card-content">
+            <div className="public-property-card-title"><div><small>{property.sector || 'Property'}</small><h3>#{property.id} · {property.type}</h3></div><strong>{formatRent(property.rent)}<small>/ month</small></strong></div>
+            <p>{property.location || 'Location not added'}</p>
+            <button className="add-button" onClick={() => onView(property)}>View Property</button>
+          </div>
+        </article>
+      })}
+      {!rows.length && <p className="public-empty-state">No properties found.</p>}
+    </div>}
+
+    <div className={`table-wrap ${publicView ? 'public-desktop-table' : ''}`}>
+
 
       <table>
 
@@ -362,6 +383,8 @@ function PropertyTable({ rows, onView, publicView }) {
       </table>
 
     </div>
+
+    </>
 
   )
 
@@ -1763,20 +1786,9 @@ function App() {
 
           <section className="content">
 
-            <div className="welcome">
-
-              <div>
-
-                <p className="eyebrow">{companyInfo?.name || 'PROPERTY LISTINGS'}</p>
-
-                <h1>Property Listings</h1>
-
-                <p className="subheading">Explore available properties.</p>
-
-              </div>
-
+            <div className="public-company-header">
+              <h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1>
               <span className="count">{properties.length} properties</span>
-
             </div>
 
 
