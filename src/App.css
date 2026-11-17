@@ -1112,4 +1112,26 @@ tbody tr:hover td {
   .special-video-grid {
     grid-template-columns: 1fr;
   }
+} 
+/* ---------- Multi-company workspace additions ---------- */
+:root { --company-accent: #198754; }
+.add-button, .nav-item.active, .action-link:hover { background-color: var(--company-accent, #198754); }
+.app-footer { margin: 28px auto 8px; padding: 18px 10px 8px; text-align: center; color: #829087; font-size: 12px; border-top: 1px solid #e8eee9; }
+.app-footer a { color: var(--company-accent, #198754); font-weight: 700; text-decoration: none; }
+.company-create-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; margin: 18px 0; }
+.company-settings .settings-form { max-width: 620px; display: grid; gap: 16px; }
+.company-settings .settings-form label { display: grid; gap: 7px; color: #516158; font-size: 13px; font-weight: 600; }
+.company-settings .settings-form input, .company-settings .settings-form select { width: 100%; min-height: 44px; border: 1px solid #dce5de; border-radius: 10px; padding: 10px 12px; background: #fff; }
+.company-settings .settings-form input[type="color"] { padding: 4px; width: 74px; min-height: 42px; }
+.company-icon { background: var(--company-accent, #198754) !important; }
+.stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+.details-actions { flex-wrap: wrap; }
+@media (max-width: 700px) {
+  .company-create-form { grid-template-columns: 1fr; }
+  .company-create-form > * { width: 100%; min-width: 0; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+  .app-footer { padding-bottom: 24px; }
 }
+
+.company-logo { width: 38px; height: 38px; border-radius: 10px; object-fit: cover; flex: 0 0 auto; }
+.app .add-button { background: var(--company-accent, #198754); border-color: var(--company-accent, #198754); }
