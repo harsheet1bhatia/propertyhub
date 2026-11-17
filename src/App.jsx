@@ -666,7 +666,6 @@ function App() {
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [newCompany, setNewCompany] = useState({ name: '', slug: '' })
   const [companySettings, setCompanySettings] = useState({ name: '', logo_url: '', theme_color: '#198754' })
-  const [inviteCompanyId, setInviteCompanyId] = useState('')
   const [companySearch, setCompanySearch] = useState('')
   const [adminSearch, setAdminSearch] = useState('')
 
@@ -904,10 +903,6 @@ function App() {
 
 
   useEffect(() => {
-    if (selectedCompanyId && !inviteCompanyId) setInviteCompanyId(selectedCompanyId)
-  }, [selectedCompanyId, inviteCompanyId])
-
-  useEffect(() => {
     if (!isSuperAdmin || !selectedCompanyId) return
     const selected = companies.find(c => c.id === selectedCompanyId)
     if (selected) setCompanySettings({ name: selected.name || '', logo_url: selected.logo_url || '', theme_color: selected.theme_color || '#198754' })
@@ -1086,6 +1081,8 @@ function App() {
     const inviteEmail = adminEmail.trim()
 
     if (!inviteEmail) return
+    const selectedCompany = companies.find(c => c.id === selectedCompanyId)
+    if (!selectedCompanyId || selectedCompany?.is_active === false) return alert('Select an active company before adding an admin.')
 
 
 
@@ -1099,7 +1096,7 @@ function App() {
 
     const { data, error } = await supabase.functions.invoke('smooth-function', {
 
-      body: { email: inviteEmail, company_id: inviteCompanyId || null }
+      body: { email: inviteEmail, company_id: selectedCompanyId || null }
 
     })
 
@@ -1122,6 +1119,18 @@ function App() {
   }
 
 
+
+  const toggleCompanyAccess = async (company) => {
+    if (!isSuperAdmin) return
+    const nextActive = company.is_active === false
+    const verb = nextActive ? 'restore' : 'put on hold'
+    if (!window.confirm(`Are you sure you want to ${verb} ${company.name}? ${nextActive ? '' : 'Neither company admins nor public viewers will be able to access this company while it is on hold.'}`)) return
+    const { data, error } = await supabase.from('companies').update({ is_active: nextActive }).eq('id', company.id).select('*').single()
+    if (error) return alert('Could not update company status: ' + error.message)
+    setCompanies(prev => prev.map(item => item.id === company.id ? data : item))
+    if (company.id === selectedCompanyId && !nextActive) setProperties([])
+    alert(nextActive ? 'Company access restored.' : 'Company put on hold. Admins and public viewers are blocked.')
+  }
 
   const toggleAdminAccess = async (admin) => {
     if (!isSuperAdmin || admin.role === 'super_admin') return
@@ -1970,7 +1979,7 @@ function App() {
                 <button className="add-button">+ Create Company</button>
               </form>
               <input className="company-search-input" value={companySearch} onChange={e => setCompanySearch(e.target.value)} placeholder="Search company by name or URL slug..." />
-              <div className="table-wrap"><table><thead><tr><th>COMPANY</th><th>PUBLIC LISTING</th><th>OPEN WORKSPACE</th></tr></thead><tbody>{companies.filter(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())).map(c => <tr key={c.id}><td>{c.name}</td><td><a href={`/?public=1&company=${c.slug}`} target="_blank" rel="noreferrer">Open listing ↗</a></td><td><button className="action-link" onClick={() => { setSelectedCompanyId(c.id); setActiveTab('All Properties'); }}>Manage</button></td></tr>)}{!companies.some(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())) && <tr><td colSpan="3">No company found.</td></tr>}</tbody></table></div>
+              <div className="table-wrap"><table><thead><tr><th>COMPANY</th><th>STATUS</th><th>PUBLIC LISTING</th><th>OPEN WORKSPACE</th><th>ACTION</th></tr></thead><tbody>{companies.filter(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())).map(c => <tr key={c.id}><td>{c.name}</td><td><span className={`status-badge ${c.is_active === false ? 'status-on-hold' : 'status-available'}`}>{c.is_active === false ? 'On Hold' : 'Active'}</span></td><td>{c.is_active === false ? 'Unavailable while on hold' : <a href={`/?public=1&company=${c.slug}`} target="_blank" rel="noreferrer">Open listing ↗</a>}</td><td><button className="action-link" onClick={() => { setSelectedCompanyId(c.id); setActiveTab('All Properties'); }}>Manage</button></td><td><button className="cancel-button" onClick={() => toggleCompanyAccess(c)}>{c.is_active === false ? 'Restore Company' : 'Hold Company'}</button></td></tr>)}{!companies.some(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())) && <tr><td colSpan="5">No company found.</td></tr>}</tbody></table></div>
             </div>
           ) : activeTab === 'Company Settings' ? (
             <div className="property-section company-settings">
@@ -1997,7 +2006,6 @@ function App() {
 
               <div className="admin-company-filter"><label>Selected Company<select value={selectedCompanyId} onChange={e => setSelectedCompanyId(e.target.value)}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div>
               <form className="search-box" onSubmit={addAdmin}>
-                <select value={inviteCompanyId} onChange={e => setInviteCompanyId(e.target.value)} required><option value="">Select company</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
 
                 <input
 
