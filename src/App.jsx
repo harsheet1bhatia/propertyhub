@@ -1,7 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
 
-import JSZip from 'jszip'
-
 import './App.css'
 
 import { supabase } from './supabase'
@@ -95,58 +93,34 @@ function mapRow(item) {
 
 
 
-async function downloadGalleryAsZip(property) {
+async function downloadMediaFiles(urls, propertyId) {
+  const files = (urls || []).filter(url => url && !isVideo(url))
+  if (!files.length) return alert('No photos available to download.')
 
-  if (!property.media_urls?.length) return alert('No media available.')
-
-
-
-  try {
-
-    const zip = new JSZip()
-
-    const folder = zip.folder(`Property-${property.id}`)
-
-
-
-    for (let i = 0; i < property.media_urls.length; i++) {
-
-      const response = await fetch(property.media_urls[i])
-
+  let downloaded = 0
+  for (let i = 0; i < files.length; i++) {
+    try {
+      const response = await fetch(files[i])
       if (!response.ok) throw new Error('Download failed')
-
       const blob = await response.blob()
-
-      const ext = blob.type.split('/')[1]?.split(';')[0] || 'file'
-
-      folder.file(`Media-${i + 1}.${ext}`, blob)
-
+      const objectUrl = URL.createObjectURL(blob)
+      const ext = (blob.type.split('/')[1] || files[i].split('.').pop().split('?')[0] || 'jpg').split(';')[0]
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = `Property-${propertyId}-Photo-${i + 1}.${ext}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000)
+      downloaded++
+      // A small gap helps browsers process each individual download.
+      await new Promise(resolve => window.setTimeout(resolve, 250))
+    } catch (error) {
+      console.error('Photo download failed:', files[i], error)
     }
-
-
-
-    const zipBlob = await zip.generateAsync({ type: 'blob' })
-
-    const url = URL.createObjectURL(zipBlob)
-
-    const link = document.createElement('a')
-
-    link.href = url
-
-    link.download = `Property-${property.id}.zip`
-
-    link.click()
-
-    URL.revokeObjectURL(url)
-
-  } catch (error) {
-
-    alert('ZIP download failed: ' + error.message)
-
   }
-
+  if (downloaded < files.length) alert(`${downloaded} of ${files.length} photos downloaded. If your browser blocked multiple downloads, allow downloads for this site and try again.`)
 }
-
 
 
 /* ---------------------------------------------------------------
@@ -401,7 +375,8 @@ function DetailsModal({
 }) {
 
   const urls = property.media_urls || []
-  const shareProperty = async () => {
+  const photoUrls = urls.filter(url => !isVideo(url))
+  const copyPropertyDetails = async () => {
     const message = [
       `Sector: ${property.sector || 'N/A'}`,
       `Property: ${property.id || 'N/A'} (${property.type || 'N/A'})`,
@@ -411,10 +386,10 @@ function DetailsModal({
       `Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
     ].join('\n')
     try {
-      if (navigator.share) await navigator.share({ title: `Property ${property.id}`, text: message })
-      else { await navigator.clipboard.writeText(message); alert('Property details copied.') }
-    } catch (error) {
-      if (error?.name !== 'AbortError') { try { await navigator.clipboard.writeText(message); alert('Property details copied.') } catch { window.prompt('Copy property details:', message) } }
+      await navigator.clipboard.writeText(message)
+      alert('Property details copied.')
+    } catch {
+      window.prompt('Copy property details:', message)
     }
   }
 
@@ -451,7 +426,7 @@ function DetailsModal({
 
           <div><small>Caretaker</small><strong>{property.caretaker || 'Not added'}</strong></div>
 
-          <div><small>Phone</small><strong>{property.phone || 'Not added'}</strong></div>
+          <div><small>Phone</small><strong>{property.phone ? <a href={`tel:${property.phone}`}>{property.phone} · Call</a> : 'Not added'}</strong></div>
 
         </div>
 
@@ -467,14 +442,10 @@ function DetailsModal({
 
           <div><h3>Photos & Videos</h3><p>{urls.length} files</p></div>
 
-          {urls.length > 0 && (
-
-            <button className="add-button" onClick={() => downloadGalleryAsZip(property)}>
-
-              Download All ZIP
-
+          {photoUrls.length > 0 && (
+            <button className="add-button" onClick={() => downloadMediaFiles(photoUrls, property.id)}>
+              Download All Photos
             </button>
-
           )}
 
         </div>
@@ -498,6 +469,10 @@ function DetailsModal({
             </button>
 
             <span>{selectedMedia.length} selected</span>
+
+            <button className="cancel-button" onClick={() => downloadMediaFiles(selectedMedia, property.id)} disabled={!selectedMedia.some(url => !isVideo(url))}>
+              Download Selected
+            </button>
 
             <button
 
@@ -620,7 +595,7 @@ function DetailsModal({
 
 
         <div className="details-actions">
-          <button className="add-button" onClick={shareProperty}>Share Property</button>
+          <button className="add-button" onClick={copyPropertyDetails}>Copy Details</button>
 
           {isAdmin && (
 
@@ -652,22 +627,41 @@ function DetailsModal({
 
 
 
-function ImagePreview({ url, onClose }) {
+function ImagePreview({ images, initialIndex = 0, onClose }) {
+  const [index, setIndex] = useState(initialIndex)
+  const touchStartX = useState(null)
+  const current = images[index]
+  const move = (direction) => setIndex(prev => Math.max(0, Math.min(images.length - 1, prev + direction)))
+  const handleTouchStart = (event) => { touchStartX[1](event.touches[0].clientX) }
+  const handleTouchEnd = (event) => {
+    if (touchStartX[0] == null) return
+    const delta = event.changedTouches[0].clientX - touchStartX[0]
+    if (Math.abs(delta) > 45) move(delta < 0 ? 1 : -1)
+    touchStartX[1](null)
+  }
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === 'Escape') onClose()
+      if (event.key === 'ArrowRight') move(1)
+      if (event.key === 'ArrowLeft') move(-1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [images.length])
 
+  if (!current) return null
   return (
-
-    <div className="image-preview-overlay" onClick={onClose}>
-
+    <div className="image-preview-overlay" onClick={onClose} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <button className="preview-close" onClick={onClose}>×</button>
-
-      <img src={url} alt="Property full preview" />
-
+      <button className="preview-nav preview-prev" onClick={e => { e.stopPropagation(); move(-1) }} disabled={index === 0}>‹</button>
+      <div className="preview-content" onClick={e => e.stopPropagation()}>
+        <img src={current.url} alt={`Property ${current.propertyId} photo ${index + 1}`} />
+        <p>Property #{current.propertyId} · {index + 1} / {images.length}</p>
+      </div>
+      <button className="preview-nav preview-next" onClick={e => { e.stopPropagation(); move(1) }} disabled={index === images.length - 1}>›</button>
     </div>
-
   )
-
 }
-
 
 
 /* ---------------------------------------------------------------
@@ -729,6 +723,7 @@ function App() {
   const [form, setForm] = useState(emptyForm)
 
   const [media, setMedia] = useState([])
+  const [editingExistingMedia, setEditingExistingMedia] = useState([])
 
   const [specialFiles, setSpecialFiles] = useState({})
 
@@ -1239,6 +1234,7 @@ function App() {
     setForm(emptyForm)
 
     setMedia([])
+    setEditingExistingMedia([])
 
     setSpecialFiles({})
 
@@ -1282,6 +1278,8 @@ function App() {
 
     setEditingProperty(true)
 
+    setEditingExistingMedia(property.media_urls || [])
+
     setMedia([])
 
     setSpecialFiles({})
@@ -1307,6 +1305,7 @@ function App() {
     setForm(emptyForm)
 
     setMedia([])
+    setEditingExistingMedia([])
 
     setSpecialFiles({})
 
@@ -1379,7 +1378,7 @@ function App() {
 
 
 
-      const allMediaUrls = [...(existing?.media_urls || []), ...uploadedUrls]
+      const allMediaUrls = [...(editingProperty ? editingExistingMedia : []), ...uploadedUrls]
 
 
 
@@ -1706,7 +1705,11 @@ function App() {
 
       onDelete={deleteProperty}
 
-      onPreview={setPreviewMedia}
+      onPreview={(url) => {
+        const images = properties.flatMap(item => (item.media_urls || []).filter(mediaUrl => !isVideo(mediaUrl)).map(mediaUrl => ({ url: mediaUrl, propertyId: item.id })))
+        const index = Math.max(0, images.findIndex(item => item.url === url))
+        setPreviewMedia({ images, index })
+      }}
 
       selectedMedia={selectedMedia}
 
@@ -1727,9 +1730,7 @@ function App() {
 
 
   const previewModal = previewMedia && (
-
-    <ImagePreview url={previewMedia} onClose={() => setPreviewMedia(null)} />
-
+    <ImagePreview images={previewMedia.images} initialIndex={previewMedia.index} onClose={() => setPreviewMedia(null)} />
   )
 
 
