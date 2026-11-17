@@ -667,6 +667,8 @@ function App() {
   const [newCompany, setNewCompany] = useState({ name: '', slug: '' })
   const [companySettings, setCompanySettings] = useState({ name: '', logo_url: '', theme_color: '#198754' })
   const [inviteCompanyId, setInviteCompanyId] = useState('')
+  const [companySearch, setCompanySearch] = useState('')
+  const [adminSearch, setAdminSearch] = useState('')
 
   const [roleChecked, setRoleChecked] = useState(false)
 
@@ -801,7 +803,7 @@ function App() {
 
         .from('propertyhub_admins')
 
-        .select('role,company_id')
+        .select('role,company_id,is_active')
 
         .eq('user_id', userId)
 
@@ -813,7 +815,7 @@ function App() {
 
 
 
-      setRole(error || !data ? null : data.role)
+      setRole(error || !data || data.is_active === false ? null : data.role)
       setCompanyId(data?.company_id || null)
       setRoleChecked(true)
 
@@ -883,36 +885,27 @@ function App() {
   /* ---------- Load admins (Super Admin only) ---------- */
 
   useEffect(() => {
-
-    if (!isSuperAdmin) return
-
-
-
+    if (!isSuperAdmin || !selectedCompanyId) { setAdmins([]); return }
+    let active = true
     async function loadAdmins() {
-
       const { data, error } = await supabase
-
         .from('propertyhub_admins')
-
-        .select('user_id,email,role,company_id,created_at')
-
+        .select('user_id,email,role,company_id,created_at,is_active')
+        .eq('company_id', selectedCompanyId)
         .order('created_at', { ascending: true })
-
-
-
+      if (!active) return
       if (error) console.error(error)
-
       else setAdmins(data || [])
-
     }
-
-
-
     loadAdmins()
+    return () => { active = false }
+  }, [isSuperAdmin, selectedCompanyId])
 
-  }, [isSuperAdmin])
 
 
+  useEffect(() => {
+    if (selectedCompanyId && !inviteCompanyId) setInviteCompanyId(selectedCompanyId)
+  }, [selectedCompanyId, inviteCompanyId])
 
   useEffect(() => {
     if (!isSuperAdmin || !selectedCompanyId) return
@@ -1070,7 +1063,9 @@ function App() {
 
       .from('propertyhub_admins')
 
-      .select('user_id,email,role,company_id,created_at')
+      .select('user_id,email,role,company_id,created_at,is_active')
+
+      .eq('company_id', selectedCompanyId)
 
       .order('created_at', { ascending: true })
 
@@ -1128,6 +1123,20 @@ function App() {
 
 
 
+  const toggleAdminAccess = async (admin) => {
+    if (!isSuperAdmin || admin.role === 'super_admin') return
+    const nextActive = admin.is_active === false
+    const action = nextActive ? 'restore access for' : 'put on hold'
+    if (!window.confirm(`Are you sure you want to ${action} ${admin.email}?`)) return
+    const { error } = await supabase.from('propertyhub_admins')
+      .update({ is_active: nextActive })
+      .eq('user_id', admin.user_id)
+      .eq('company_id', selectedCompanyId)
+    if (error) return alert('Could not update admin access: ' + error.message)
+    setAdmins(prev => prev.map(item => item.user_id === admin.user_id ? { ...item, is_active: nextActive } : item))
+    alert(nextActive ? 'Admin access restored.' : 'Admin access put on hold.')
+  }
+
   const removeAdmin = async (admin) => {
 
     if (!isSuperAdmin || admin.role === 'super_admin') return
@@ -1143,6 +1152,7 @@ function App() {
       .delete()
 
       .eq('user_id', admin.user_id)
+      .eq('company_id', selectedCompanyId)
 
 
 
@@ -1959,7 +1969,8 @@ function App() {
                 <input placeholder="Public URL slug (e.g. fnf-properties)" value={newCompany.slug} onChange={e => setNewCompany(p => ({ ...p, slug: e.target.value }))} required />
                 <button className="add-button">+ Create Company</button>
               </form>
-              <div className="table-wrap"><table><thead><tr><th>COMPANY</th><th>PUBLIC LISTING</th><th>OPEN WORKSPACE</th></tr></thead><tbody>{companies.map(c => <tr key={c.id}><td>{c.name}</td><td><a href={`/?public=1&company=${c.slug}`} target="_blank" rel="noreferrer">Open listing ↗</a></td><td><button className="action-link" onClick={() => { setSelectedCompanyId(c.id); setActiveTab('All Properties'); }}>Manage</button></td></tr>)}</tbody></table></div>
+              <input className="company-search-input" value={companySearch} onChange={e => setCompanySearch(e.target.value)} placeholder="Search company by name or URL slug..." />
+              <div className="table-wrap"><table><thead><tr><th>COMPANY</th><th>PUBLIC LISTING</th><th>OPEN WORKSPACE</th></tr></thead><tbody>{companies.filter(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())).map(c => <tr key={c.id}><td>{c.name}</td><td><a href={`/?public=1&company=${c.slug}`} target="_blank" rel="noreferrer">Open listing ↗</a></td><td><button className="action-link" onClick={() => { setSelectedCompanyId(c.id); setActiveTab('All Properties'); }}>Manage</button></td></tr>)}{!companies.some(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())) && <tr><td colSpan="3">No company found.</td></tr>}</tbody></table></div>
             </div>
           ) : activeTab === 'Company Settings' ? (
             <div className="property-section company-settings">
@@ -1978,12 +1989,13 @@ function App() {
 
               <div className="section-heading">
 
-                <div><h2>Manage Admins</h2><p>Add or remove PropertyHub administrators.</p></div>
+                <div><h2>Manage Admins</h2><p>Admins are shown only for the selected company.</p></div>
 
               </div>
 
 
 
+              <div className="admin-company-filter"><label>Selected Company<select value={selectedCompanyId} onChange={e => setSelectedCompanyId(e.target.value)}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div>
               <form className="search-box" onSubmit={addAdmin}>
                 <select value={inviteCompanyId} onChange={e => setInviteCompanyId(e.target.value)} required><option value="">Select company</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
 
@@ -2007,6 +2019,8 @@ function App() {
 
 
 
+              <input className="company-search-input admin-search-input" value={adminSearch} onChange={e => setAdminSearch(e.target.value)} placeholder="Search admin by email..." />
+
               <p className="subheading">
 
                 An invitation will be sent by email. The admin logs in with the link, no password needed.
@@ -2019,33 +2033,32 @@ function App() {
 
                 <table>
 
-                  <thead><tr><th>EMAIL</th><th>ROLE</th><th>ACTION</th></tr></thead>
+                  <thead><tr><th>EMAIL</th><th>ROLE</th><th>ACCESS</th><th>ACTION</th></tr></thead>
 
                   <tbody>
 
-                    {admins.map(admin => (
+                    {admins.filter(admin => (admin.email || '').toLowerCase().includes(adminSearch.toLowerCase())).map(admin => (
 
                       <tr key={admin.user_id}>
 
                         <td>{admin.email}</td>
 
                         <td>{admin.role}</td>
-
+                        <td><span className={`status-badge ${admin.is_active === false ? 'status-on-hold' : 'status-available'}`}>{admin.is_active === false ? 'On Hold' : 'Active'}</span></td>
                         <td>
-
                           {admin.role !== 'super_admin' && (
-
-                            <button className="cancel-button" onClick={() => removeAdmin(admin)}>Remove</button>
-
+                            <div className="admin-actions">
+                              <button className="cancel-button" onClick={() => toggleAdminAccess(admin)}>{admin.is_active === false ? 'Restore' : 'Hold Access'}</button>
+                              <button className="cancel-button" onClick={() => removeAdmin(admin)}>Remove</button>
+                            </div>
                           )}
-
                         </td>
 
                       </tr>
 
                     ))}
 
-                    {!admins.length && <tr><td colSpan="3">No admins found.</td></tr>}
+                    {!admins.filter(admin => (admin.email || '').toLowerCase().includes(adminSearch.toLowerCase())).length && <tr><td colSpan="4">No admins found for this company.</td></tr>}
 
                   </tbody>
 
