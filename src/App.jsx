@@ -22,7 +22,6 @@ const emptyFilters = {
 
 const params = new URLSearchParams(window.location.search)
 const isPublic = params.get('public') === '1'
-const isPasswordSetup = params.get('set-password') === '1'
 
 function isVideo(url) {
   return /\/video\/upload\//i.test(url) || /\.(mp4|mov|webm)(\?|$)/i.test(url)
@@ -369,9 +368,6 @@ function App() {
   const [roleChecked, setRoleChecked] = useState(false)
   const [loading, setLoading] = useState(!isPublic)
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
 
   // Data
   const [properties, setProperties] = useState([])
@@ -538,21 +534,15 @@ function App() {
   /* ---------- Auth actions ---------- */
   const login = async (e) => {
     e.preventDefault()
-    setLoading(true)
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      password
+      options: { shouldCreateUser: false, emailRedirectTo: window.location.origin }
     })
 
-    setLoading(false)
+    if (error) return alert('Could not send login link: ' + error.message)
 
-    if (error) {
-      alert('Login failed: ' + error.message)
-      return
-    }
-
-    setSession(data.session)
+    alert('Login link sent! Check your email and click the link.')
   }
 
   const logout = async () => {
@@ -562,23 +552,6 @@ function App() {
     setRoleChecked(false)
     setProperties([])
     setActiveTab('Dashboard')
-  }
-
-  const setAdminPassword = async (e) => {
-    e.preventDefault()
-
-    if (newPassword.length < 8) return alert('Password must be at least 8 characters.')
-    if (newPassword !== confirmPassword) return alert('Passwords do not match.')
-
-    const { error } = await supabase.auth.updateUser({ password: newPassword })
-
-    if (error) return alert('Password setup failed: ' + error.message)
-
-    window.history.replaceState({}, '', window.location.pathname)
-    setNewPassword('')
-    setConfirmPassword('')
-    alert('Password set successfully! Welcome to PropertyHub.')
-    window.location.reload()
   }
 
   /* ---------- Admin management ---------- */
@@ -951,45 +924,6 @@ function App() {
     )
   }
 
-  // New admin password setup (from invitation email)
-  if (isPasswordSetup && session) {
-    return (
-      <div className="login-screen">
-        <form className="property-form" onSubmit={setAdminPassword}>
-          <div className="brand">
-            <div className="brand-icon">P</div>
-            <span>Property<span className="green">Hub</span></span>
-          </div>
-
-          <h2>Set Your Password</h2>
-          <p>Create a password for your PropertyHub admin account.</p>
-
-          <label>New Password
-            <input
-              type="password"
-              value={newPassword}
-              onChange={e => setNewPassword(e.target.value)}
-              minLength="8"
-              required
-            />
-          </label>
-
-          <label>Confirm Password
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              minLength="8"
-              required
-            />
-          </label>
-
-          <button className="add-button" type="submit">Set Password</button>
-        </form>
-      </div>
-    )
-  }
-
   // Login screen
   if (!session) {
     return (
@@ -1000,17 +934,13 @@ function App() {
             <span>Property<span className="green">Hub</span></span>
           </div>
           <h2>Admin Login</h2>
-          <p>Sign in with your authorized admin account.</p>
+          <p>Enter your admin email. We will send you a login link.</p>
 
           <label>Email Address
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
           </label>
 
-          <label>Password
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-          </label>
-
-          <button className="add-button" type="submit">Login</button>
+          <button className="add-button" type="submit">Send Login Link</button>
         </form>
       </div>
     )
@@ -1092,7 +1022,7 @@ function App() {
               </form>
 
               <p className="subheading">
-                An invitation will be sent by email. The admin can set their own password.
+                An invitation will be sent by email. The admin logs in with the link, no password needed.
               </p>
 
               <div className="table-wrap">
