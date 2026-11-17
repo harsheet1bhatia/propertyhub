@@ -665,7 +665,7 @@ function App() {
   const [companies, setCompanies] = useState([])
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [newCompany, setNewCompany] = useState({ name: '', slug: '' })
-  const [companySettings, setCompanySettings] = useState({ name: '', logo_url: '', theme_color: '#198754' })
+  const [companySettings, setCompanySettings] = useState({ name: '', logo_url: '', theme_color: '#198754', text_color: '#ffffff' })
   const [companySearch, setCompanySearch] = useState('')
   const [adminSearch, setAdminSearch] = useState('')
 
@@ -859,7 +859,7 @@ function App() {
         if (!active) return
         if (error) console.error(error)
         setCompanyInfo(data || null)
-        if (data) setCompanySettings({ name: data.name || '', logo_url: data.logo_url || '', theme_color: data.theme_color || '#198754' })
+        if (data) setCompanySettings({ name: data.name || '', logo_url: data.logo_url || '', theme_color: data.theme_color || '#198754', text_color: data.text_color || '#ffffff' })
       }
     }
     loadCompanies()
@@ -905,7 +905,7 @@ function App() {
   useEffect(() => {
     if (!isSuperAdmin || !selectedCompanyId) return
     const selected = companies.find(c => c.id === selectedCompanyId)
-    if (selected) setCompanySettings({ name: selected.name || '', logo_url: selected.logo_url || '', theme_color: selected.theme_color || '#198754' })
+    if (selected) setCompanySettings({ name: selected.name || '', logo_url: selected.logo_url || '', theme_color: selected.theme_color || '#198754', text_color: selected.text_color || '#ffffff' })
   }, [selectedCompanyId, companies, isSuperAdmin])
 
   /* ---------- Go back to page 1 when filters change ---------- */
@@ -1757,7 +1757,7 @@ function App() {
 
     return (
 
-      <div className="app" style={{ "--company-accent": companyInfo?.theme_color || "#198754" }}>
+      <div className="app" style={{ "--company-accent": companyInfo?.theme_color || "#198754", "--company-text": companyInfo?.text_color || "#ffffff" }}>
 
         <main className="main" style={{ marginLeft: 0, width: '100%' }}>
 
@@ -1888,7 +1888,7 @@ function App() {
 
   return (
 
-    <div className="app" style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#198754" }}>
+    <div className="app" style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#198754", "--company-text": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.text_color : companyInfo?.text_color) || "#ffffff" }}>
 
       <aside className="sidebar">
 
@@ -1985,10 +1985,10 @@ function App() {
             <div className="property-section company-settings">
               <div className="section-heading"><div><h2>Company Settings</h2><p>Update your company identity and public listing appearance.</p></div></div>
               <form className="property-form settings-form" onSubmit={async e => { e.preventDefault(); const targetId = isSuperAdmin ? activeCompanyId : companyId; if (!targetId) return alert('Select a company first.'); const { data, error } = await supabase.from('companies').update(companySettings).eq('id', targetId).select('*').single(); if (error) return alert('Update failed: ' + error.message); setCompanyInfo(data); if (isSuperAdmin) setCompanies(prev => prev.map(c => c.id === data.id ? data : c)); alert('Company settings updated.'); }}>
-                {isSuperAdmin && <label>Select Company<select value={activeCompanyId || ''} onChange={e => { setSelectedCompanyId(e.target.value); const c = companies.find(x => x.id === e.target.value); if (c) setCompanySettings({ name: c.name, logo_url: c.logo_url || '', theme_color: c.theme_color || '#198754' }); }}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
+                {isSuperAdmin && <label>Select Company<select value={activeCompanyId || ''} onChange={e => { setSelectedCompanyId(e.target.value); const c = companies.find(x => x.id === e.target.value); if (c) setCompanySettings({ name: c.name, logo_url: c.logo_url || '', theme_color: c.theme_color || '#198754', text_color: c.text_color || '#ffffff' }); }}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
                 <label>Company Name<input value={companySettings.name} onChange={e => setCompanySettings(p => ({ ...p, name: e.target.value }))} required /></label>
                 <label>Logo URL<input type="url" value={companySettings.logo_url} onChange={e => setCompanySettings(p => ({ ...p, logo_url: e.target.value }))} placeholder="https://..." /></label>
-                <label>Theme Colour<input type="color" value={companySettings.theme_color} onChange={e => setCompanySettings(p => ({ ...p, theme_color: e.target.value }))} /></label>
+                <div className="settings-colour-row"><label>Theme Colour<input type="color" value={companySettings.theme_color} onChange={e => setCompanySettings(p => ({ ...p, theme_color: e.target.value }))} /><small>Background / accent colour</small></label><label>Text Colour<input type="color" value={companySettings.text_color} onChange={e => setCompanySettings(p => ({ ...p, text_color: e.target.value }))} /><small>Text shown on accent backgrounds</small></label></div>
                 <button className="add-button">Save Company Settings</button>
               </form>
             </div>
