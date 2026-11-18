@@ -1332,3 +1332,72 @@ tbody tr:hover td {
   .public-property-grid .property-photo-collage { height: 230px; }
   .public-card-actions { display: grid; grid-template-columns: 1fr 1fr; }
 }
+
+
+/* ---------- Public viewer: company branding + laptop horizontal listing ---------- */
+.public-company-brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+}
+.public-company-logo,
+.public-company-logo-fallback {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  border-radius: 13px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #e7eee8;
+  padding: 4px;
+}
+.public-company-logo-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--company-accent, #087b45);
+  color: var(--company-text, #fff);
+  font-size: 22px;
+  font-weight: 800;
+}
+.public-company-brand h1 { min-width: 0; }
+
+/* Laptop/desktop: one property per row, photo collage on the left. */
+@media (min-width: 701px) {
+  .public-property-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 16px;
+  }
+  .public-property-grid .public-property-card {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    min-height: 230px;
+  }
+  .public-property-grid .property-photo-collage {
+    width: 310px;
+    min-width: 310px;
+    height: 230px;
+    align-self: stretch;
+    flex: 0 0 310px;
+  }
+  .public-property-grid .public-property-card-content {
+    flex: 1;
+    min-width: 0;
+    padding: 22px 25px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .public-property-grid .public-property-card-title h3 { font-size: 18px; }
+  .public-property-grid .public-property-card-content > p { line-height: 1.6; }
+  .public-property-grid .public-card-actions { max-width: 360px; }
+}
+
+@media (max-width: 700px) {
+  .public-company-logo,
+  .public-company-logo-fallback {
+    width: 44px; height: 44px; flex-basis: 44px;
+  }
+  .public-company-brand { gap: 10px; }
+}

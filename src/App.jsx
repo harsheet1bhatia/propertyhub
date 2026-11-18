@@ -1747,7 +1747,12 @@ function App() {
           <section className="content">
 
             <div className="public-company-header">
-              <h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1>
+              <div className="public-company-brand">
+                {companyInfo?.logo_url
+                  ? <img className="public-company-logo" src={companyInfo.logo_url} alt={`${companyInfo?.name || 'Company'} logo`} />
+                  : <div className="public-company-logo-fallback">{(companyInfo?.name || 'P').trim().slice(0, 1).toUpperCase()}</div>}
+                <h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1>
+              </div>
               <span className="count">{properties.length} properties</span>
             </div>
 
