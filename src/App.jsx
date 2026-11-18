@@ -76,33 +76,134 @@ function mapRow(item) {
   }
 }
 
+// Create a ZIP without an extra package so iPhone Safari receives one download
+// instead of several separate downloads (which Safari may block).
+function crc32(bytes) {
+  let crc = 0xffffffff
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i]
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+async function makeZipBlob(entries) {
+  const encoder = new TextEncoder()
+  const localParts = []
+  const centralParts = []
+  let offset = 0
+  const now = new Date()
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2)
+  const dosDate = ((Math.max(1980, now.getFullYear()) - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()
+
+  for (const entry of entries) {
+    const name = encoder.encode(entry.name)
+    const data = new Uint8Array(await entry.blob.arrayBuffer())
+    const crc = crc32(data)
+
+    const local = new Uint8Array(30 + name.length)
+    const lv = new DataView(local.buffer)
+    lv.setUint32(0, 0x04034b50, true)
+    lv.setUint16(4, 20, true)
+    lv.setUint16(6, 0x0800, true) // UTF-8 filenames
+    lv.setUint16(8, 0, true) // Store without compression
+    lv.setUint16(10, dosTime, true)
+    lv.setUint16(12, dosDate, true)
+    lv.setUint32(14, crc, true)
+    lv.setUint32(18, data.length, true)
+    lv.setUint32(22, data.length, true)
+    lv.setUint16(26, name.length, true)
+    lv.setUint16(28, 0, true)
+    local.set(name, 30)
+    localParts.push(local, data)
+
+    const central = new Uint8Array(46 + name.length)
+    const cv = new DataView(central.buffer)
+    cv.setUint32(0, 0x02014b50, true)
+    cv.setUint16(4, 20, true)
+    cv.setUint16(6, 20, true)
+    cv.setUint16(8, 0x0800, true)
+    cv.setUint16(10, 0, true)
+    cv.setUint16(12, dosTime, true)
+    cv.setUint16(14, dosDate, true)
+    cv.setUint32(16, crc, true)
+    cv.setUint32(20, data.length, true)
+    cv.setUint32(24, data.length, true)
+    cv.setUint16(28, name.length, true)
+    cv.setUint16(30, 0, true)
+    cv.setUint16(32, 0, true)
+    cv.setUint16(34, 0, true)
+    cv.setUint16(36, 0, true)
+    cv.setUint32(38, 0, true)
+    cv.setUint32(42, offset, true)
+    central.set(name, 46)
+    centralParts.push(central)
+    offset += local.length + data.length
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0)
+  const end = new Uint8Array(22)
+  const ev = new DataView(end.buffer)
+  ev.setUint32(0, 0x06054b50, true)
+  ev.setUint16(4, 0, true)
+  ev.setUint16(6, 0, true)
+  ev.setUint16(8, entries.length, true)
+  ev.setUint16(10, entries.length, true)
+  ev.setUint32(12, centralSize, true)
+  ev.setUint32(16, offset, true)
+  ev.setUint16(20, 0, true)
+
+  return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' })
+}
+
 async function downloadMediaFiles(urls, propertyId) {
   const files = (urls || []).filter(url => url && !isVideo(url))
   if (!files.length) return alert('No photos available to download.')
 
-  let downloaded = 0
+  const entries = []
+  const failed = []
+
   for (let i = 0; i < files.length; i++) {
     try {
-      const response = await fetch(files[i])
-      if (!response.ok) throw new Error('Download failed')
+      const response = await fetch(files[i], { mode: 'cors' })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const blob = await response.blob()
-      const objectUrl = URL.createObjectURL(blob)
-      const ext = (blob.type.split('/')[1] || files[i].split('.').pop().split('?')[0] || 'jpg').split(';')[0]
-      const link = document.createElement('a')
-      link.href = objectUrl
-      link.download = `Property-${propertyId}-Photo-${i + 1}.${ext}`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000)
-      downloaded++
-      // A small gap helps browsers process each individual download.
-      await new Promise(resolve => window.setTimeout(resolve, 250))
+      const contentType = (blob.type || '').toLowerCase()
+      const mimeExtension = contentType.split('/')[1]?.split(';')[0]
+      const urlExtension = files[i].split('?')[0].split('.').pop()
+      const extension = (mimeExtension || urlExtension || 'jpg').replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '') || 'jpg'
+      entries.push({
+        name: `Property-${String(propertyId).replace(/[^a-z0-9_-]/gi, '')}-Photo-${i + 1}.${extension}`,
+        blob
+      })
     } catch (error) {
       console.error('Photo download failed:', files[i], error)
+      failed.push(i + 1)
     }
   }
-  if (downloaded < files.length) alert(`${downloaded} of ${files.length} photos downloaded. If your browser blocked multiple downloads, allow downloads for this site and try again.`)
+
+  if (!entries.length) {
+    return alert('Photos could not be downloaded. Please check your internet connection and try again.')
+  }
+
+  const zipBlob = await makeZipBlob(entries)
+  const objectUrl = URL.createObjectURL(zipBlob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = `Property-${String(propertyId).replace(/[^a-z0-9_-]/gi, '')}-Photos.zip`
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
+
+  if (failed.length) {
+    alert(`${entries.length} of ${files.length} photos added to the ZIP. ${failed.length} photo(s) could not be fetched.`)
+  } else {
+    alert(`All ${entries.length} photos are ready in one ZIP file. On iPhone, open the ZIP from Files > Downloads and extract it.`)
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -259,7 +360,7 @@ function DetailsModal({
           <div><h3>Photos & Videos</h3><p>{urls.length} files</p></div>
           {photoUrls.length > 0 && (
             <button className="add-button" onClick={() => downloadMediaFiles(photoUrls, property.id)}>
-              Download All Photos
+              Download All Photos (ZIP)
             </button>
           )}
         </div>
