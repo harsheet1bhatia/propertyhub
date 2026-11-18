@@ -67,9 +67,9 @@ async function copyPropertyText(property) {
     `Sector: ${property.sector || 'N/A'}`,
     `Property: ${property.id || 'N/A'} (${property.type || 'N/A'})`,
     `Rent: ${formatRent(property.rent)}`,
-    `📍 Location: ${property.location || 'N/A'}`,
-    `🗺️ Map: ${property.map || 'Not available'}`,
-    `📞 Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
+    `📌 Location: ${property.location || 'N/A'}`,
+    `🧭 Map: ${property.map || 'Not available'}`,
+    `☎️ Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
   ].join('\n')
   try {
     if (navigator.clipboard?.writeText && window.isSecureContext) await navigator.clipboard.writeText(message)
