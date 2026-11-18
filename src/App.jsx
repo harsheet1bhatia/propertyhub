@@ -76,51 +76,38 @@ function mapRow(item) {
   }
 }
 
-// Download photos individually on Android/desktop. On iPhone, share all photos
-// together through the native iOS Share Sheet (no ZIP archive).
+// Detect iPhone/iPad Safari so we can prepare the complete batch before
+// the final tap. iOS requires the Share action to happen directly from a
+// user gesture; waiting for network requests first can lose that permission.
+function isIOSDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
+async function preparePhotoFiles(urls, propertyId) {
+  const photos = (urls || []).filter(url => url && !isVideo(url))
+  if (!photos.length) throw new Error('No photos available to download.')
+
+  const propertyLabel = String(propertyId).replace(/[^a-z0-9_-]/gi, '') || 'Property'
+  return Promise.all(photos.map(async (photoUrl, index) => {
+    const response = await fetch(photoUrl, { mode: 'cors' })
+    if (!response.ok) throw new Error(`Photo ${index + 1} could not be loaded (HTTP ${response.status}).`)
+    const blob = await response.blob()
+    const mime = (blob.type || 'image/jpeg').split(';')[0].toLowerCase()
+    if (!mime.startsWith('image/')) throw new Error(`Photo ${index + 1} is not a supported image.`)
+    const mimeExtension = mime.split('/')[1]
+    const urlExtension = photoUrl.split('?')[0].split('.').pop()
+    const extension = (mimeExtension === 'jpeg' ? 'jpg' : mimeExtension || urlExtension || 'jpg')
+      .replace(/[^a-z0-9]/g, '') || 'jpg'
+    return new File([blob], `Property-${propertyLabel}-Photo-${index + 1}.${extension}`, { type: mime })
+  }))
+}
+
+// Individual downloads remain unchanged for Android and desktop browsers.
 async function downloadMediaFiles(urls, propertyId) {
   const files = (urls || []).filter(url => url && !isVideo(url))
   if (!files.length) return alert('No photos available to download.')
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-
-  // iOS supports sharing multiple image Files through its native Share Sheet.
-  if (isIOS && typeof navigator.share === 'function' && typeof window.File === 'function') {
-    try {
-      const propertyLabel = String(propertyId).replace(/[^a-z0-9_-]/gi, '') || 'Property'
-      const sharedFiles = await Promise.all(files.map(async (photoUrl, index) => {
-        const response = await fetch(photoUrl, { mode: 'cors' })
-        if (!response.ok) throw new Error(`Photo ${index + 1}: HTTP ${response.status}`)
-        const blob = await response.blob()
-        const mime = (blob.type || 'image/jpeg').split(';')[0].toLowerCase()
-        if (!mime.startsWith('image/')) throw new Error(`Photo ${index + 1} is not a supported image`)
-        const mimeExtension = mime.split('/')[1]
-        const urlExtension = photoUrl.split('?')[0].split('.').pop()
-        const extension = (mimeExtension === 'jpeg' ? 'jpg' : mimeExtension || urlExtension || 'jpg')
-          .replace(/[^a-z0-9]/g, '') || 'jpg'
-        return new File([blob], `Property-${propertyLabel}-Photo-${index + 1}.${extension}`, { type: mime })
-      }))
-
-      if (navigator.canShare && navigator.canShare({ files: sharedFiles })) {
-        await navigator.share({
-          files: sharedFiles,
-          title: `Property ${propertyId} Photos`,
-          text: `Photos for Property ${propertyId}`
-        })
-        return
-      }
-      // If this iPhone/browser cannot share files, continue to the individual-download fallback.
-      alert('This browser cannot share multiple photos together. Individual downloads will start instead.')
-    } catch (error) {
-      // Closing the iOS Share Sheet is a normal user action, not a download failure.
-      if (error?.name === 'AbortError') return
-      console.error('iPhone photo sharing failed:', error)
-      alert('Could not prepare the photos for sharing. Individual downloads will start instead.')
-    }
-  }
-
-  // Existing individual-file download behaviour for Android, desktop and fallback browsers.
   let downloaded = 0
   const failed = []
   for (let i = 0; i < files.length; i++) {
@@ -149,11 +136,8 @@ async function downloadMediaFiles(urls, propertyId) {
     }
   }
 
-  if (failed.length) {
-    alert(`${downloaded} of ${files.length} photos downloaded. Photos ${failed.join(', ')} could not be downloaded.`)
-  } else {
-    alert(`${downloaded} photos downloaded individually. On iPhone, check Safari Downloads in the Files app.`)
-  }
+  if (failed.length) alert(`${downloaded} of ${files.length} photos downloaded. Photos ${failed.join(', ')} could not be downloaded.`)
+  else alert(`${downloaded} photos downloaded individually. On iPhone, check Safari Downloads in the Files app.`)
 }
 
 /* ---------------------------------------------------------------
@@ -283,7 +267,57 @@ function DetailsModal({
 }) {
   const urls = property.media_urls || []
   const photoUrls = urls.filter(url => !isVideo(url))
+  const [preparedShareFiles, setPreparedShareFiles] = useState(null)
+  const [preparingPhotos, setPreparingPhotos] = useState(false)
+  const [shareError, setShareError] = useState('')
   const copyPropertyDetails = () => copyPropertyText(property)
+
+  useEffect(() => {
+    setPreparedShareFiles(null)
+    setPreparingPhotos(false)
+    setShareError('')
+  }, [property.id])
+
+  const handleDownloadAllPhotos = async () => {
+    if (!isIOSDevice()) {
+      downloadMediaFiles(photoUrls, property.id)
+      return
+    }
+
+    // First tap prepares every photo. The next tap opens Share Sheet directly
+    // from the button gesture, avoiding iOS Safari's expired-gesture issue.
+    if (!preparedShareFiles) {
+      setPreparingPhotos(true)
+      setShareError('')
+      try {
+        const prepared = await preparePhotoFiles(photoUrls, property.id)
+        setPreparedShareFiles(prepared)
+      } catch (error) {
+        console.error('Could not prepare all property photos:', error)
+        setShareError(error.message || 'Some photos could not be prepared. Please try again.')
+      } finally {
+        setPreparingPhotos(false)
+      }
+      return
+    }
+
+    if (!navigator.canShare || !navigator.canShare({ files: preparedShareFiles }) || !navigator.share) {
+      setShareError('This iPhone browser does not support sharing this complete photo set. Please open the page in Safari and try again.')
+      return
+    }
+
+    try {
+      // IMPORTANT: iOS Safari works more reliably when the payload contains
+      // only files. Do not add title, text, or URL alongside the images.
+      await navigator.share({ files: preparedShareFiles })
+      setPreparedShareFiles(null)
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        console.error('iPhone photo sharing failed:', error)
+        setShareError('iPhone could not share this photo set. Keep this page open and tap Share All Photos again.')
+      }
+    }
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -309,11 +343,16 @@ function DetailsModal({
         <div className="gallery-heading">
           <div><h3>Photos & Videos</h3><p>{urls.length} files</p></div>
           {photoUrls.length > 0 && (
-            <button className="add-button" onClick={() => downloadMediaFiles(photoUrls, property.id)}>
-              Download All Photos
+            <button className="add-button" onClick={handleDownloadAllPhotos} disabled={preparingPhotos}>
+              {preparingPhotos ? 'Preparing All Photos…' : preparedShareFiles ? `Share All ${preparedShareFiles.length} Photos` : 'Download All Photos'}
             </button>
           )}
         </div>
+
+        {isIOSDevice() && preparedShareFiles && (
+          <p className="detail-line">All {preparedShareFiles.length} photos are ready. Tap <strong>Share All {preparedShareFiles.length} Photos</strong>, then choose the iPhone save option.</p>
+        )}
+        {shareError && <p className="detail-line" role="alert">{shareError}</p>}
 
         {isAdmin && urls.length > 0 && (
           <div className="gallery-tools">
