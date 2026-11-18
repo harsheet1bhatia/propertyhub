@@ -1020,7 +1020,7 @@ function App() {
         <main className="main" style={{ marginLeft: 0, width: '100%' }}>
           <section className="content">
             <div className="public-company-header">
-              <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1><p className="public-tagline">Handpicked rental residences</p></div></div>
+              <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
               <span className="count">{properties.length} properties</span>
             </div>
 
