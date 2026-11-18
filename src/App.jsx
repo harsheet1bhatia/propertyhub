@@ -76,14 +76,53 @@ function mapRow(item) {
   }
 }
 
-// Download photos individually. Keep this as separate image files (no ZIP).
+// Download photos individually on Android/desktop. On iPhone, share all photos
+// together through the native iOS Share Sheet (no ZIP archive).
 async function downloadMediaFiles(urls, propertyId) {
   const files = (urls || []).filter(url => url && !isVideo(url))
   if (!files.length) return alert('No photos available to download.')
 
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
+  // iOS supports sharing multiple image Files through its native Share Sheet.
+  if (isIOS && typeof navigator.share === 'function' && typeof window.File === 'function') {
+    try {
+      const propertyLabel = String(propertyId).replace(/[^a-z0-9_-]/gi, '') || 'Property'
+      const sharedFiles = await Promise.all(files.map(async (photoUrl, index) => {
+        const response = await fetch(photoUrl, { mode: 'cors' })
+        if (!response.ok) throw new Error(`Photo ${index + 1}: HTTP ${response.status}`)
+        const blob = await response.blob()
+        const mime = (blob.type || 'image/jpeg').split(';')[0].toLowerCase()
+        if (!mime.startsWith('image/')) throw new Error(`Photo ${index + 1} is not a supported image`)
+        const mimeExtension = mime.split('/')[1]
+        const urlExtension = photoUrl.split('?')[0].split('.').pop()
+        const extension = (mimeExtension === 'jpeg' ? 'jpg' : mimeExtension || urlExtension || 'jpg')
+          .replace(/[^a-z0-9]/g, '') || 'jpg'
+        return new File([blob], `Property-${propertyLabel}-Photo-${index + 1}.${extension}`, { type: mime })
+      }))
+
+      if (navigator.canShare && navigator.canShare({ files: sharedFiles })) {
+        await navigator.share({
+          files: sharedFiles,
+          title: `Property ${propertyId} Photos`,
+          text: `Photos for Property ${propertyId}`
+        })
+        return
+      }
+      // If this iPhone/browser cannot share files, continue to the individual-download fallback.
+      alert('This browser cannot share multiple photos together. Individual downloads will start instead.')
+    } catch (error) {
+      // Closing the iOS Share Sheet is a normal user action, not a download failure.
+      if (error?.name === 'AbortError') return
+      console.error('iPhone photo sharing failed:', error)
+      alert('Could not prepare the photos for sharing. Individual downloads will start instead.')
+    }
+  }
+
+  // Existing individual-file download behaviour for Android, desktop and fallback browsers.
   let downloaded = 0
   const failed = []
-
   for (let i = 0; i < files.length; i++) {
     try {
       const response = await fetch(files[i], { mode: 'cors' })
@@ -103,7 +142,6 @@ async function downloadMediaFiles(urls, propertyId) {
       link.remove()
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000)
       downloaded++
-      // Space requests so mobile browsers have time to process each file.
       await new Promise(resolve => window.setTimeout(resolve, 700))
     } catch (error) {
       console.error('Photo download failed:', files[i], error)
