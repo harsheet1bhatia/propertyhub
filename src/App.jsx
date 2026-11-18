@@ -634,15 +634,15 @@ function App() {
     return () => { active = false }
   }, [role, activeCompanyId, isPublic])
 
-  /* ---------- Load admins (Super Admin only) ---------- */
+  /* ---------- Load admins for the active company ---------- */
   useEffect(() => {
-    if (!isSuperAdmin || !selectedCompanyId) { setAdmins([]); return }
+    if (!isAdmin || !activeCompanyId) { setAdmins([]); return }
     let active = true
     async function loadAdmins() {
       const { data, error } = await supabase
         .from('propertyhub_admins')
         .select('user_id,email,role,company_id,created_at,is_active')
-        .eq('company_id', selectedCompanyId)
+        .eq('company_id', activeCompanyId)
         .order('created_at', { ascending: true })
       if (!active) return
       if (error) console.error(error)
@@ -650,7 +650,7 @@ function App() {
     }
     loadAdmins()
     return () => { active = false }
-  }, [isSuperAdmin, selectedCompanyId])
+  }, [isAdmin, activeCompanyId])
 
   useEffect(() => {
     if (!isSuperAdmin || !selectedCompanyId) return
@@ -731,12 +731,14 @@ function App() {
 
   /* ---------- Admin management ---------- */
   const refreshAdmins = async () => {
-    const { data } = await supabase
+    if (!isAdmin || !activeCompanyId) return
+    const { data, error } = await supabase
       .from('propertyhub_admins')
       .select('user_id,email,role,company_id,created_at,is_active')
-      .eq('company_id', selectedCompanyId)
+      .eq('company_id', activeCompanyId)
       .order('created_at', { ascending: true })
 
+    if (error) return console.error(error)
     setAdmins(data || [])
   }
 
@@ -745,15 +747,17 @@ function App() {
 
     const inviteEmail = adminEmail.trim()
     if (!inviteEmail) return
-    const selectedCompany = companies.find(c => c.id === selectedCompanyId)
-    if (!selectedCompanyId || selectedCompany?.is_active === false) return alert('Select an active company before adding an admin.')
+    const selectedCompany = isSuperAdmin
+      ? companies.find(c => c.id === activeCompanyId)
+      : companyInfo
+    if (!activeCompanyId || selectedCompany?.is_active === false) return alert('Select an active company before adding an admin.')
 
     const { data: { session: currentSession } } = await supabase.auth.getSession()
 
     if (!currentSession) return alert('Please login again.')
 
     const { data, error } = await supabase.functions.invoke('smooth-function', {
-      body: { email: inviteEmail, company_id: selectedCompanyId || null }
+      body: { email: inviteEmail, company_id: activeCompanyId }
     })
 
     if (error || data?.error) {
@@ -778,28 +782,28 @@ function App() {
   }
 
   const toggleAdminAccess = async (admin) => {
-    if (!isSuperAdmin || admin.role === 'super_admin') return
+    if (!isAdmin || admin.role === 'super_admin' || admin.user_id === userId) return
     const nextActive = admin.is_active === false
     const action = nextActive ? 'restore access for' : 'put on hold'
     if (!window.confirm(`Are you sure you want to ${action} ${admin.email}?`)) return
     const { error } = await supabase.from('propertyhub_admins')
       .update({ is_active: nextActive })
       .eq('user_id', admin.user_id)
-      .eq('company_id', selectedCompanyId)
+      .eq('company_id', activeCompanyId)
     if (error) return alert('Could not update admin access: ' + error.message)
     setAdmins(prev => prev.map(item => item.user_id === admin.user_id ? { ...item, is_active: nextActive } : item))
     alert(nextActive ? 'Admin access restored.' : 'Admin access put on hold.')
   }
 
   const removeAdmin = async (admin) => {
-    if (!isSuperAdmin || admin.role === 'super_admin') return
+    if (!isAdmin || admin.role === 'super_admin' || admin.user_id === userId) return
     if (!window.confirm(`Are you sure you want to remove ${admin.email}?`)) return
 
     const { error } = await supabase
       .from('propertyhub_admins')
       .delete()
       .eq('user_id', admin.user_id)
-      .eq('company_id', selectedCompanyId)
+      .eq('company_id', activeCompanyId)
 
     if (error) return alert('Could not remove admin: ' + error.message)
 
@@ -1167,7 +1171,7 @@ function App() {
   }
 
   // Admin app
-  const tabs = ['All Properties', 'Company Settings', ...(isSuperAdmin ? ['Manage Companies', 'Manage Admins'] : [])]
+  const tabs = ['All Properties', 'Company Settings', ...(isSuperAdmin ? ['Manage Companies'] : []), 'Manage Admins']
 
   return (
     <div className="app" style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#b08d57", "--company-text": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.text_color : companyInfo?.text_color) || "#ffffff" }}>
@@ -1233,13 +1237,13 @@ function App() {
                 <button className="add-button">Save Company Settings</button>
               </form>
             </div>
-          ) : activeTab === 'Manage Admins' && isSuperAdmin ? (
+          ) : activeTab === 'Manage Admins' && isAdmin ? (
             <div className="property-section">
               <div className="section-heading">
-                <div><h2>Manage Admins</h2><p>Admins are shown only for the selected company.</p></div>
+                <div><h2>Manage Admins</h2><p>{isSuperAdmin ? 'Admins are shown only for the selected company.' : 'Manage admin access for your company.'}</p></div>
               </div>
 
-              <div className="admin-company-filter"><label>Selected Company<select value={selectedCompanyId} onChange={e => setSelectedCompanyId(e.target.value)}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div>
+              {isSuperAdmin && <div className="admin-company-filter"><label>Selected Company<select value={selectedCompanyId} onChange={e => setSelectedCompanyId(e.target.value)}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div>}
               <form className="search-box" onSubmit={addAdmin}>
                 <input
                   type="email"
@@ -1269,8 +1273,10 @@ function App() {
                         <td>
                           {admin.role !== 'super_admin' && (
                             <div className="admin-actions">
-                              <button className="cancel-button" onClick={() => toggleAdminAccess(admin)}>{admin.is_active === false ? 'Restore' : 'Hold Access'}</button>
-                              <button className="cancel-button" onClick={() => removeAdmin(admin)}>Remove</button>
+                              {admin.user_id !== userId && <>
+                                <button className="cancel-button" onClick={() => toggleAdminAccess(admin)}>{admin.is_active === false ? 'Restore' : 'Hold Access'}</button>
+                                <button className="cancel-button" onClick={() => removeAdmin(admin)}>Remove</button>
+                              </>}
                             </div>
                           )}
                         </td>
