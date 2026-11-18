@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap');
 
 * {
   margin: 0;
@@ -1333,70 +1333,115 @@ tbody tr:hover td {
   .public-card-actions { display: grid; grid-template-columns: 1fr 1fr; }
 }
 
+/* ================================================================
+   PROPERTYHUB — GLOBAL LUXURY DESIGN SYSTEM
+   Theme is selected per company and loaded from Supabase.
+   ================================================================ */
+.app[data-theme="ivory-gold"] {
+  --lux-bg:#f5f2ec; --lux-surface:#fffdfa; --lux-panel:#f0ece4; --lux-ink:#252522;
+  --lux-muted:#77746d; --lux-line:#e6dfd3; --lux-accent:#b18a4b; --lux-accent-soft:#f3ead9;
+  --lux-shadow:0 16px 42px rgba(48,39,25,.08); --lux-deep-shadow:0 24px 60px rgba(48,39,25,.13);
+}
+.app[data-theme="charcoal-gold"] {
+  --lux-bg:#171817; --lux-surface:#222421; --lux-panel:#2b2d29; --lux-ink:#f3efe6;
+  --lux-muted:#b2ada2; --lux-line:#3c3d37; --lux-accent:#c8a66b; --lux-accent-soft:#393326;
+  --lux-shadow:0 16px 42px rgba(0,0,0,.24); --lux-deep-shadow:0 24px 60px rgba(0,0,0,.36);
+}
+.app[data-theme="warm-beige"] {
+  --lux-bg:#f4eee7; --lux-surface:#fffaf4; --lux-panel:#eee3d7; --lux-ink:#302923;
+  --lux-muted:#82766c; --lux-line:#e4d7c9; --lux-accent:#9a7554; --lux-accent-soft:#efe2d4;
+  --lux-shadow:0 16px 42px rgba(65,43,25,.08); --lux-deep-shadow:0 24px 60px rgba(65,43,25,.14);
+}
+.app[data-theme="forest-stone"] {
+  --lux-bg:#edf0eb; --lux-surface:#fbfcf9; --lux-panel:#e5eae2; --lux-ink:#202b23;
+  --lux-muted:#748076; --lux-line:#d9e0d7; --lux-accent:#647b61; --lux-accent-soft:#e5ece2;
+  --lux-shadow:0 16px 42px rgba(30,52,35,.08); --lux-deep-shadow:0 24px 60px rgba(30,52,35,.14);
+}
 
-/* Public viewer: refined luxury finish while retaining the admin-selected company theme. */
-.public-company-header {
-  display:flex; align-items:center; justify-content:space-between; gap:18px;
-  margin:0 0 25px; padding:10px 2px 18px;
-  border-bottom:1px solid color-mix(in srgb, var(--company-accent, #198754) 20%, transparent);
+.app { background:var(--lux-bg); color:var(--lux-ink); font-family:'DM Sans',sans-serif; transition:background .35s ease,color .35s ease; }
+.app .sidebar,.app .topbar,.app .property-section,.app .property-form,.app .details-modal,
+.app .stat-card,.app .public-property-card,.app .company-card,.app .table-wrap {
+  background:var(--lux-surface); color:var(--lux-ink); border-color:var(--lux-line); box-shadow:var(--lux-shadow);
 }
-.public-company-identity { display:flex; align-items:center; gap:14px; min-width:0; }
-.public-company-logo-wrap {
-  width:58px; height:58px; flex:0 0 58px; display:grid; place-items:center;
-  overflow:hidden; border-radius:50%; background:transparent;
-  border:1px solid color-mix(in srgb, var(--company-accent, #198754) 35%, transparent);
-  box-shadow:0 5px 16px rgba(0,0,0,.10);
+.app .sidebar { border-right:1px solid var(--lux-line); }
+.app .topbar { border-bottom:1px solid var(--lux-line); backdrop-filter:blur(14px); }
+.app .content { background:var(--lux-bg); }
+.app .brand,.app .welcome h1,.app .section-heading h2,.app .form-heading h2,.app .public-company-header h1 { color:var(--lux-ink); }
+.app .brand { font-family:'Playfair Display',serif; letter-spacing:-.5px; }
+.app .brand-icon { background:var(--lux-accent); color:#fff; border-radius:12px; box-shadow:0 7px 18px color-mix(in srgb,var(--lux-accent) 30%,transparent); }
+.app .green,.app a,.app .public-call-link { color:var(--lux-accent); }
+.app .menu-label,.app .breadcrumb,.app .company-card small,.app .profile small,.app .subheading,
+.app .section-heading p,.app .public-property-card-content>p,.app .public-property-card-title small { color:var(--lux-muted); }
+.app .nav-item { color:var(--lux-muted); border-radius:12px; transition:background .2s ease,color .2s ease,transform .2s ease; }
+.app .nav-item:hover { background:var(--lux-panel); transform:translateX(2px); }
+.app .nav-item.active { background:var(--lux-accent-soft); color:var(--lux-accent); box-shadow:inset 3px 0 var(--lux-accent); }
+.app .company-card { border-top-color:var(--lux-line); }
+.app .company-icon { background:var(--lux-accent-soft)!important; color:var(--lux-accent)!important; }
+.app .company-logo { border-radius:50%; object-fit:contain; background:transparent; }
+.app input,.app select,.app textarea { background:var(--lux-surface); color:var(--lux-ink); border:1px solid var(--lux-line); border-radius:11px; }
+.app input:focus,.app select:focus,.app textarea:focus { outline:none; border-color:var(--lux-accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--lux-accent) 16%,transparent); }
+.app .add-button,.app button.add-button { background:var(--lux-accent); color:#fff; border:1px solid var(--lux-accent); border-radius:11px; box-shadow:0 7px 18px color-mix(in srgb,var(--lux-accent) 23%,transparent); transition:transform .2s ease,box-shadow .2s ease,filter .2s ease; }
+.app .add-button:hover { transform:translateY(-2px); box-shadow:0 12px 25px color-mix(in srgb,var(--lux-accent) 27%,transparent); filter:brightness(1.04); }
+.app .cancel-button { background:var(--lux-panel); color:var(--lux-ink); border:1px solid var(--lux-line); border-radius:11px; transition:transform .2s ease,background .2s ease; }
+.app .cancel-button:hover { transform:translateY(-1px); background:var(--lux-accent-soft); }
+.app .action-link { color:var(--lux-accent); }
+.app .stat-card { border:1px solid var(--lux-line); border-radius:18px; }
+.app .stat-card strong { color:var(--lux-accent); font-family:'Playfair Display',serif; font-size:30px; }
+.app .property-section { border:1px solid var(--lux-line); border-radius:20px; padding:26px; }
+.app table th { background:var(--lux-panel); color:var(--lux-muted); letter-spacing:.09em; }
+.app table td,.app table th { border-color:var(--lux-line); }
+.app table tr:hover td { background:var(--lux-panel); }
+.app .public-company-header { padding:20px 0 26px; border-bottom:1px solid var(--lux-line); }
+.app .public-brand-lockup { display:flex; align-items:center; gap:16px; min-width:0; }
+.app .public-brand-lockup img,.app .public-brand-monogram { width:58px; height:58px; flex:0 0 58px; border-radius:50%; object-fit:contain; background:transparent; }
+.app .public-brand-monogram { display:grid; place-items:center; color:var(--lux-accent); background:var(--lux-accent-soft); font:600 26px 'Playfair Display',serif; }
+.app .public-company-header h1 { font:700 clamp(24px,3vw,34px)/1.12 'Playfair Display',serif; letter-spacing:-.45px; }
+.app .public-property-card { border:1px solid var(--lux-line); border-radius:19px; box-shadow:var(--lux-shadow); transition:transform .28s ease,box-shadow .28s ease,border-color .28s ease; }
+.app .public-property-card:hover { transform:translateY(-5px); box-shadow:var(--lux-deep-shadow); border-color:color-mix(in srgb,var(--lux-accent) 45%,var(--lux-line)); }
+.app .property-photo-collage { background:var(--lux-panel); }
+.app .collage-photo img { transition:transform .65s cubic-bezier(.2,.7,.2,1); }
+.app .public-property-card:hover .collage-photo img { transform:scale(1.035); }
+.app .public-property-card-content { padding:20px; }
+.app .public-property-card-title h3 { color:var(--lux-ink); font:600 19px 'Playfair Display',serif; }
+.app .public-property-card-title>strong { color:var(--lux-accent); font-size:18px; }
+.app .public-card-actions { gap:10px; margin-top:5px; }
+.app .public-card-actions button { min-height:44px; font-weight:700; }
+.app .count { background:var(--lux-accent-soft); color:var(--lux-accent); border:1px solid var(--lux-line); border-radius:999px; padding:8px 13px; }
+.app .search-box { background:var(--lux-surface); border:1px solid var(--lux-line); border-radius:16px; padding:14px; box-shadow:var(--lux-shadow); }
+.app .pagination { color:var(--lux-muted); }
+.app .status-badge { border-radius:999px; }
+.app .modal-overlay { backdrop-filter:blur(8px); }
+.app .details-modal { border:1px solid var(--lux-line); border-radius:22px; box-shadow:var(--lux-deep-shadow); }
+.app .eyebrow { color:var(--lux-accent); letter-spacing:.16em; }
+.app .company-settings .settings-form { max-width:760px; }
+.app .theme-choice-label { display:grid; gap:8px; color:var(--lux-ink); font-weight:700; }
+.app .theme-choice-label small { color:var(--lux-muted); font-weight:400; }
+.app .app-footer { color:var(--lux-muted); }
+
+/* Login screen follows the selected signature brand language. */
+.login-screen { background:linear-gradient(135deg,#f5f2ec,#e9e1d4); }
+.login-screen .property-form { border:1px solid #e6dfd3; border-radius:22px; padding:34px; box-shadow:0 24px 70px rgba(48,39,25,.12); }
+.login-screen .property-form h2 { font-family:'Playfair Display',serif; font-size:29px; }
+
+@media (min-width:701px) {
+  .app .public-property-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:26px; }
+  .app .public-property-grid .property-photo-collage { height:clamp(220px,21vw,300px); }
 }
-.public-company-logo { width:100%; height:100%; display:block; object-fit:contain;
-  border:0!important; border-radius:50%; padding:0!important; margin:0;
-  background:transparent!important; box-shadow:none!important; }
-.public-company-header h1 {
-  margin:0; color:var(--company-accent, #198754); font-family:Inter, 'Segoe UI', sans-serif;
-  font-size:clamp(23px, 2.2vw, 30px); font-weight:800; letter-spacing:-.55px; line-height:1.15;
-  overflow-wrap:anywhere;
+@media (max-width:1000px) {
+  .app .public-property-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
-.public-company-header .count {
-  flex-shrink:0; border:1px solid color-mix(in srgb, var(--company-accent, #198754) 22%, transparent);
-  border-radius:999px; padding:8px 13px; color:var(--company-accent, #198754);
-  background:color-mix(in srgb, var(--company-accent, #198754) 7%, white); font-weight:700;
-}
-.public-property-grid { gap:22px; }
-.public-property-grid .public-property-card {
-  border:1px solid rgba(25,40,30,.09); border-radius:17px;
-  box-shadow:0 8px 24px rgba(20,35,25,.075), 0 1px 3px rgba(20,35,25,.04);
-  transition:transform .22s ease, box-shadow .22s ease, border-color .22s ease;
-}
-.public-property-grid .public-property-card:hover {
-  transform:translateY(-3px);
-  border-color:color-mix(in srgb, var(--company-accent, #198754) 32%, white);
-  box-shadow:0 16px 34px rgba(20,35,25,.12);
-}
-.public-property-grid .collage-photo img,
-.public-property-grid .collage-photo video { width:100%; height:100%; display:block; object-fit:cover; }
-.public-property-grid .collage-video { position:relative; background:#171b18; }
-.collage-play-mark {
-  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-  width:42px; height:42px; display:grid; place-items:center; padding-left:3px;
-  border-radius:50%; color:#fff; background:rgba(0,0,0,.55);
-  border:1px solid rgba(255,255,255,.75); font-size:14px; font-style:normal; pointer-events:none;
-}
-.public-property-grid .public-property-card-title small { font-size:12px; font-weight:700; color:var(--company-accent, #198754); }
-.public-property-grid .public-card-actions { gap:10px; margin-top:14px; }
-.public-property-grid .public-card-actions > button {
-  min-height:43px; border-radius:10px; font-weight:700; letter-spacing:.1px;
-  box-shadow:0 3px 9px rgba(0,0,0,.07); transition:transform .18s ease, box-shadow .18s ease;
-}
-.public-property-grid .public-card-actions > button:hover { transform:translateY(-1px); box-shadow:0 7px 15px rgba(0,0,0,.10); }
-.public-property-grid .public-card-actions .add-button { background:var(--company-accent, #198754); border-color:var(--company-accent, #198754); }
-.public-property-grid .public-call-link { color:var(--company-accent, #198754); font-size:12px; }
 @media (max-width:700px) {
-  .public-company-header { align-items:center; gap:9px; padding:7px 0 15px; margin-bottom:17px; }
-  .public-company-identity { gap:10px; }
-  .public-company-logo-wrap { width:48px; height:48px; flex-basis:48px; }
-  .public-company-header h1 { font-size:20px; letter-spacing:-.25px; }
-  .public-company-header .count { padding:6px 9px; font-size:10px; }
-  .public-property-grid .public-card-actions { grid-template-columns:1fr 1fr; gap:9px; }
+  .app .public-property-grid { grid-template-columns:1fr; gap:18px; }
+  .app .public-property-grid .property-photo-collage { height:250px; }
+  .app .public-company-header { align-items:flex-start; gap:10px; }
+  .app .public-brand-lockup { gap:11px; }
+  .app .public-brand-lockup img,.app .public-brand-monogram { width:46px;height:46px;flex-basis:46px; }
+  .app .public-company-header h1 { font-size:24px; }
+  .app .property-section { padding:14px; border-radius:16px; }
+  .app .public-property-card-content { padding:16px; }
+  .app .public-card-actions { grid-template-columns:1fr 1fr; }
+  .login-screen .property-form { padding:24px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .public-property-grid .public-property-card, .public-property-grid .public-card-actions > button { transition:none; }
+@media (prefers-reduced-motion:reduce) {
+  .app *, .login-screen * { animation:none!important; transition:none!important; scroll-behavior:auto!important; }
 }

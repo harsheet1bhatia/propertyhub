@@ -49,15 +49,6 @@ function isVideo(url) {
 
 }
 
-// Combine regular uploads and legacy/special video records without duplicates.
-function getPropertyMedia(property) {
-  const regular = Array.isArray(property?.media_urls) ? property.media_urls : []
-  const special = Array.isArray(property?.special_videos)
-    ? property.special_videos.map(item => typeof item === 'string' ? item : item?.url).filter(Boolean)
-    : []
-  return [...new Set([...regular, ...special].filter(Boolean))]
-}
-
 
 
 function formatRent(rent) {
@@ -77,7 +68,7 @@ async function copyPropertyText(property) {
     `Property: ${property.id || 'N/A'} (${property.type || 'N/A'})`,
     `Rent: ${formatRent(property.rent)}`,
     `📍 Location: ${property.location || 'N/A'}`,
-    `📍 Map: ${property.map || 'Not available'}`,
+    `🗺️ Map: ${property.map || 'Not available'}`,
     `📞 Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
   ].join('\n')
   try {
@@ -297,20 +288,18 @@ function PropertyTable({ rows, onView, publicView }) {
     return (
       <div className="property-mobile-cards public-property-grid">
         {rows.map(property => {
-          const allMedia = getPropertyMedia(property)
-          const collageMedia = allMedia.slice(0, 4)
+          const allPhotos = (property.media_urls || []).filter(url => !isVideo(url))
+          const photos = allPhotos.slice(0, 4)
           return (
             <article className="public-property-card" key={`public-${property.id}`}>
-              <div className={`property-photo-collage collage-count-${collageMedia.length}`} role="button" tabIndex={0} onClick={() => onView(property)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onView(property) } }} aria-label={`Open property ${property.id} media`}>
-                {collageMedia.length ? collageMedia.map((url, index) => (
-                  <span className={`collage-photo ${isVideo(url) ? 'collage-video' : ''}`} key={`${url}-${index}`}>
-                    {isVideo(url)
-                      ? <><video src={url} muted playsInline preload="metadata" onClick={e => { e.stopPropagation(); const current = e.currentTarget; document.querySelectorAll('.collage-video video').forEach(other => { if (other !== current) other.pause() }); if (current.paused) current.play().catch(() => {}); else current.pause() }} /><i className="collage-play-mark" aria-hidden="true">▶</i></>
-                      : <img src={url} alt={`Property ${property.id} photo ${index + 1}`} loading="lazy" />}
-                    {index === 3 && allMedia.length > 4 && <b>+{allMedia.length - 4}</b>}
+              <button className={`property-photo-collage collage-count-${photos.length}`} onClick={() => onView(property)} aria-label={`Open property ${property.id} photos`}>
+                {photos.length ? photos.map((url, index) => (
+                  <span className="collage-photo" key={`${url}-${index}`}>
+                    <img src={url} alt={`Property ${property.id} photo ${index + 1}`} loading="lazy" />
+                    {index === 3 && allPhotos.length > 4 && <b>+{allPhotos.length - 4}</b>}
                   </span>
-                )) : <span className="collage-empty">No media available</span>}
-              </div>
+                )) : <span className="collage-empty">No photos available</span>}
+              </button>
               <div className="public-property-card-content">
                 <div className="public-property-card-title">
                   <div><small>{property.sector || 'Property'}</small><h3>#{property.id} · {property.type}</h3></div>
@@ -358,7 +347,7 @@ function DetailsModal({
 
 }) {
 
-  const urls = isAdmin ? (property.media_urls || []) : getPropertyMedia(property)
+  const urls = property.media_urls || []
   const photoUrls = urls.filter(url => !isVideo(url))
   const copyPropertyDetails = () => copyPropertyText(property)
 
@@ -652,7 +641,7 @@ function App() {
   const [companies, setCompanies] = useState([])
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [newCompany, setNewCompany] = useState({ name: '', slug: '' })
-  const [companySettings, setCompanySettings] = useState({ name: '', logo_url: '', theme_color: '#198754', text_color: '#ffffff' })
+  const [companySettings, setCompanySettings] = useState({ name: '', logo_url: '', theme_color: '#b9955b', text_color: '#ffffff', theme_preset: 'ivory-gold' })
   const [companySearch, setCompanySearch] = useState('')
   const [adminSearch, setAdminSearch] = useState('')
 
@@ -847,7 +836,7 @@ function App() {
         if (!active) return
         if (error) console.error(error)
         setCompanyInfo(data || null)
-        if (data) setCompanySettings({ name: data.name || '', logo_url: data.logo_url || '', theme_color: data.theme_color || '#198754', text_color: data.text_color || '#ffffff' })
+        if (data) setCompanySettings({ name: data.name || '', logo_url: data.logo_url || '', theme_color: data.theme_color || '#b9955b', text_color: data.text_color || '#ffffff', theme_preset: data.theme_preset || 'ivory-gold' })
       }
     }
     loadCompanies()
@@ -893,7 +882,7 @@ function App() {
   useEffect(() => {
     if (!isSuperAdmin || !selectedCompanyId) return
     const selected = companies.find(c => c.id === selectedCompanyId)
-    if (selected) setCompanySettings({ name: selected.name || '', logo_url: selected.logo_url || '', theme_color: selected.theme_color || '#198754', text_color: selected.text_color || '#ffffff' })
+    if (selected) setCompanySettings({ name: selected.name || '', logo_url: selected.logo_url || '', theme_color: selected.theme_color || '#b9955b', text_color: selected.text_color || '#ffffff', theme_preset: selected.theme_preset || 'ivory-gold' })
   }, [selectedCompanyId, companies, isSuperAdmin])
 
   /* ---------- Go back to page 1 when filters change ---------- */
@@ -948,7 +937,7 @@ function App() {
 
     return [...filtered].sort((a, b) => {
 
-      if (filters.sort === 'sector') return a.sector.localeCompare(b.sector)
+      if (filters.sort === 'sector' || filters.sort === 'default') return String(a.sector || '').localeCompare(String(b.sector || ''), undefined, { numeric: true, sensitivity: 'base' })
 
       if (filters.sort === 'rent-low') return a.rent - b.rent
 
@@ -1751,17 +1740,14 @@ function App() {
 
     return (
 
-      <div className="app" style={{ "--company-accent": companyInfo?.theme_color || "#198754", "--company-text": companyInfo?.text_color || "#ffffff" }}>
+      <div className="app" data-theme={companyInfo?.theme_preset || 'ivory-gold'} style={{ "--company-accent": companyInfo?.theme_color || "#b9955b", "--company-text": companyInfo?.text_color || "#ffffff" }}>
 
         <main className="main" style={{ marginLeft: 0, width: '100%' }}>
 
           <section className="content">
 
             <div className="public-company-header">
-              <div className="public-company-identity">
-                {companyInfo?.logo_url && <span className="public-company-logo-wrap"><img className="public-company-logo" src={companyInfo.logo_url} alt={`${companyInfo?.name || 'Company'} logo`} /></span>}
-                <h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1>
-              </div>
+              <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div>
               <span className="count">{properties.length} properties</span>
             </div>
 
@@ -1874,7 +1860,7 @@ function App() {
 
   return (
 
-    <div className="app" style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#198754", "--company-text": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.text_color : companyInfo?.text_color) || "#ffffff" }}>
+    <div className="app" data-theme={(isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_preset : companyInfo?.theme_preset) || 'ivory-gold'} style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#b9955b", "--company-text": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.text_color : companyInfo?.text_color) || "#ffffff" }}>
 
       <aside className="sidebar">
 
@@ -1971,10 +1957,11 @@ function App() {
             <div className="property-section company-settings">
               <div className="section-heading"><div><h2>Company Settings</h2><p>Update your company identity and public listing appearance.</p></div></div>
               <form className="property-form settings-form" onSubmit={async e => { e.preventDefault(); const targetId = isSuperAdmin ? activeCompanyId : companyId; if (!targetId) return alert('Select a company first.'); const { data, error } = await supabase.from('companies').update(companySettings).eq('id', targetId).select('*').single(); if (error) return alert('Update failed: ' + error.message); setCompanyInfo(data); if (isSuperAdmin) setCompanies(prev => prev.map(c => c.id === data.id ? data : c)); alert('Company settings updated.'); }}>
-                {isSuperAdmin && <label>Select Company<select value={activeCompanyId || ''} onChange={e => { setSelectedCompanyId(e.target.value); const c = companies.find(x => x.id === e.target.value); if (c) setCompanySettings({ name: c.name, logo_url: c.logo_url || '', theme_color: c.theme_color || '#198754', text_color: c.text_color || '#ffffff' }); }}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
+                {isSuperAdmin && <label>Select Company<select value={activeCompanyId || ''} onChange={e => { setSelectedCompanyId(e.target.value); const c = companies.find(x => x.id === e.target.value); if (c) setCompanySettings({ name: c.name, logo_url: c.logo_url || '', theme_color: c.theme_color || '#b9955b', text_color: c.text_color || '#ffffff', theme_preset: c.theme_preset || 'ivory-gold' }); }}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
                 <label>Company Name<input value={companySettings.name} onChange={e => setCompanySettings(p => ({ ...p, name: e.target.value }))} required /></label>
                 <label>Logo URL<input type="url" value={companySettings.logo_url} onChange={e => setCompanySettings(p => ({ ...p, logo_url: e.target.value }))} placeholder="https://..." /></label>
-                <div className="settings-colour-row"><label>Theme Colour<input type="color" value={companySettings.theme_color} onChange={e => setCompanySettings(p => ({ ...p, theme_color: e.target.value }))} /><small>Background / accent colour</small></label><label>Text Colour<input type="color" value={companySettings.text_color} onChange={e => setCompanySettings(p => ({ ...p, text_color: e.target.value }))} /><small>Text shown on accent backgrounds</small></label></div>
+                <label className="theme-choice-label">Website Theme<select value={companySettings.theme_preset || 'ivory-gold'} onChange={e => setCompanySettings(p => ({ ...p, theme_preset: e.target.value }))}><option value="ivory-gold">Ivory & Champagne — Signature Luxury</option><option value="charcoal-gold">Charcoal & Champagne — Modern Luxe</option><option value="warm-beige">Warm Beige — Contemporary</option><option value="forest-stone">Forest & Stone — Estate Classic</option></select><small>This theme applies across Viewer, Admin and Super Admin workspace for this company.</small></label>
+                <div className="settings-colour-row"><label>Accent Colour<input type="color" value={companySettings.theme_color} onChange={e => setCompanySettings(p => ({ ...p, theme_color: e.target.value }))} /><small>Custom accent override</small></label><label>Accent Text Colour<input type="color" value={companySettings.text_color} onChange={e => setCompanySettings(p => ({ ...p, text_color: e.target.value }))} /><small>Text on accent surfaces</small></label></div>
                 <button className="add-button">Save Company Settings</button>
               </form>
             </div>
