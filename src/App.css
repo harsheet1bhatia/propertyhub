@@ -1461,3 +1461,74 @@ tbody tr:hover td {
 .app .details-modal,.app .stat-card,.app .public-property-card,
 .app .company-card,.app .table-wrap { background:var(--lux-surface); }
 .app .search-box { background:color-mix(in srgb,var(--skin-base) 7%,#fff); }
+
+
+/* ================================================================
+   PROPERTYHUB — QUIET LUXURY DEPTH (driven by the three colour controls)
+   ================================================================ */
+.app {
+  --lux-accent: var(--company-accent, #168653);
+  --lux-accent-soft: color-mix(in srgb, var(--company-accent, #168653) 10%, #ffffff);
+  --skin-base: var(--company-skin, #f1f5ef);
+  --lux-bg: color-mix(in srgb, var(--skin-base) 25%, #fafbf9);
+  --lux-surface: color-mix(in srgb, var(--skin-base) 7%, #ffffff);
+  --lux-panel: color-mix(in srgb, var(--skin-base) 22%, #f7f8f5);
+  --lux-line: color-mix(in srgb, var(--skin-base) 24%, #dedfd9);
+  --lux-shadow: 0 8px 22px color-mix(in srgb, var(--company-accent, #168653) 7%, rgba(35,45,37,.06)), 0 2px 5px rgba(35,45,37,.035);
+  --lux-deep-shadow: 0 18px 42px color-mix(in srgb, var(--company-accent, #168653) 10%, rgba(35,45,37,.10)), 0 5px 12px rgba(35,45,37,.045);
+  background: var(--lux-bg);
+  color: #252b27;
+  transition: background .35s ease, color .25s ease;
+}
+.app .content { background: linear-gradient(145deg, var(--lux-bg), color-mix(in srgb, var(--skin-base) 15%, #fff)); }
+.app .sidebar, .app .topbar, .app .property-section, .app .property-form,
+.app .details-modal, .app .stat-card, .app .public-property-card,
+.app .company-card, .app .table-wrap {
+  background: linear-gradient(150deg, color-mix(in srgb, var(--skin-base) 6%, #fff), var(--lux-surface));
+  border: 1px solid var(--lux-line);
+  box-shadow: var(--lux-shadow);
+}
+.app .sidebar { backdrop-filter: blur(18px); }
+.app .topbar { background: color-mix(in srgb, var(--lux-surface) 88%, transparent); backdrop-filter: blur(18px); }
+.app .stat-card, .app .property-section, .app .property-form, .app .table-wrap,
+.app .public-property-card, .app .company-card { border-radius: 18px; }
+.app .stat-card, .app .company-card, .app .property-section, .app .table-wrap,
+.app .public-property-card, .app button, .app .nav-item, .app a {
+  transition: transform .24s ease, box-shadow .24s ease, border-color .24s ease, background-color .24s ease;
+}
+.app .stat-card:hover, .app .company-card:hover, .app .public-property-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--lux-deep-shadow);
+  border-color: color-mix(in srgb, var(--company-accent, #168653) 28%, var(--lux-line));
+}
+.app .public-property-card:hover .property-photo-collage img,
+.app .public-property-card:hover .property-image img,
+.app .public-property-card:hover .property-main-image img { transform: scale(1.035); }
+.app .property-photo-collage img, .app .property-image img, .app .property-main-image img { transition: transform .45s ease; }
+.app .add-button, .app button.primary, .app .calculate-button {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--company-accent, #168653) 90%, #fff), var(--company-accent, #168653));
+  color: var(--company-text, #fff);
+  border: 1px solid color-mix(in srgb, var(--company-accent, #168653) 80%, #fff);
+  box-shadow: 0 5px 13px color-mix(in srgb, var(--company-accent, #168653) 22%, transparent), inset 0 1px 0 rgba(255,255,255,.22);
+}
+.app .add-button:hover, .app button.primary:hover { transform: translateY(-2px); box-shadow: 0 9px 20px color-mix(in srgb, var(--company-accent, #168653) 27%, transparent); }
+.app .nav-item.active, .app .action-link:hover { background: var(--lux-accent-soft); color: var(--company-accent, #168653); }
+.app input:focus, .app select:focus, .app textarea:focus {
+  border-color: var(--company-accent, #168653);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--company-accent, #168653) 13%, transparent);
+  outline: none;
+}
+.app .settings-colour-row label { background: linear-gradient(145deg, #fff, color-mix(in srgb, var(--skin-base) 12%, #fff)); border: 1px solid var(--lux-line); border-radius: 14px; padding: 14px; box-shadow: var(--lux-shadow); }
+.app .settings-colour-row input[type="color"] { width: 54px; height: 42px; border: 1px solid var(--lux-line); border-radius: 10px; padding: 3px; background: #fff; cursor: pointer; }
+.app .settings-form { gap: 18px; }
+.app .property-section { padding: 24px; }
+.app .table-wrap { overflow: hidden; }
+.app table thead { background: color-mix(in srgb, var(--skin-base) 34%, #f4f5f2); }
+.app .status-badge, .app .count-badge { background: var(--lux-accent-soft); color: var(--company-accent, #168653); border: 1px solid color-mix(in srgb, var(--company-accent, #168653) 14%, transparent); }
+@media (max-width: 700px) {
+  .app .property-section { padding: 16px; }
+  .app .stat-card:hover, .app .company-card:hover, .app .public-property-card:hover { transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app *, .app *::before, .app *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
