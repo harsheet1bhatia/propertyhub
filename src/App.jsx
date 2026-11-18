@@ -67,9 +67,9 @@ async function copyPropertyText(property) {
     `Sector: ${property.sector || 'N/A'}`,
     `Property: ${property.id || 'N/A'} (${property.type || 'N/A'})`,
     `Rent: ${formatRent(property.rent)}`,
-    `📌 Location: ${property.location || 'N/A'}`,
-    `🧭 Map: ${property.map || 'Not available'}`,
-    `☎️ Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
+    `📍 Location: ${property.location || 'N/A'}`,
+    `🗺️ Map: ${property.map || 'Not available'}`,
+    `📞 Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
   ].join('\n')
   try {
     if (navigator.clipboard?.writeText && window.isSecureContext) await navigator.clipboard.writeText(message)
@@ -641,7 +641,7 @@ function App() {
   const [companies, setCompanies] = useState([])
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [newCompany, setNewCompany] = useState({ name: '', slug: '' })
-  const [companySettings, setCompanySettings] = useState({ name: '', logo_url: '', theme_color: '#b9955b', text_color: '#ffffff', theme_preset: 'ivory-gold' })
+  const [companySettings, setCompanySettings] = useState({ name: '', logo_url: '', theme_color: '#168653', text_color: '#ffffff', skin_color: '#f1f5ef', theme_preset: 'ivory-gold' })
   const [companySearch, setCompanySearch] = useState('')
   const [adminSearch, setAdminSearch] = useState('')
 
@@ -836,7 +836,7 @@ function App() {
         if (!active) return
         if (error) console.error(error)
         setCompanyInfo(data || null)
-        if (data) setCompanySettings({ name: data.name || '', logo_url: data.logo_url || '', theme_color: data.theme_color || '#b9955b', text_color: data.text_color || '#ffffff', theme_preset: data.theme_preset || 'ivory-gold' })
+        if (data) setCompanySettings({ name: data.name || '', logo_url: data.logo_url || '', theme_color: data.theme_color || '#168653', text_color: data.text_color || '#ffffff', skin_color: data.skin_color || '#f1f5ef', theme_preset: data.theme_preset || 'ivory-gold' })
       }
     }
     loadCompanies()
@@ -882,7 +882,7 @@ function App() {
   useEffect(() => {
     if (!isSuperAdmin || !selectedCompanyId) return
     const selected = companies.find(c => c.id === selectedCompanyId)
-    if (selected) setCompanySettings({ name: selected.name || '', logo_url: selected.logo_url || '', theme_color: selected.theme_color || '#b9955b', text_color: selected.text_color || '#ffffff', theme_preset: selected.theme_preset || 'ivory-gold' })
+    if (selected) setCompanySettings({ name: selected.name || '', logo_url: selected.logo_url || '', theme_color: selected.theme_color || '#168653', text_color: selected.text_color || '#ffffff', skin_color: selected.skin_color || '#f1f5ef', theme_preset: selected.theme_preset || 'ivory-gold' })
   }, [selectedCompanyId, companies, isSuperAdmin])
 
   /* ---------- Go back to page 1 when filters change ---------- */
@@ -1740,7 +1740,7 @@ function App() {
 
     return (
 
-      <div className="app" data-theme={companyInfo?.theme_preset || 'ivory-gold'} style={{ "--company-accent": companyInfo?.theme_color || "#b9955b", "--company-text": companyInfo?.text_color || "#ffffff" }}>
+      <div className="app" data-theme={companyInfo?.theme_preset || 'ivory-gold'} style={{ "--company-accent": companyInfo?.theme_color || "#168653", "--company-text": companyInfo?.text_color || "#ffffff", "--company-skin": companyInfo?.skin_color || "#f1f5ef" }}>
 
         <main className="main" style={{ marginLeft: 0, width: '100%' }}>
 
@@ -1860,7 +1860,7 @@ function App() {
 
   return (
 
-    <div className="app" data-theme={(isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_preset : companyInfo?.theme_preset) || 'ivory-gold'} style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#b9955b", "--company-text": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.text_color : companyInfo?.text_color) || "#ffffff" }}>
+    <div className="app" data-theme={(isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_preset : companyInfo?.theme_preset) || 'ivory-gold'} style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#168653", "--company-text": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.text_color : companyInfo?.text_color) || "#ffffff", "--company-skin": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.skin_color : companyInfo?.skin_color) || "#f1f5ef" }}>
 
       <aside className="sidebar">
 
@@ -1957,11 +1957,11 @@ function App() {
             <div className="property-section company-settings">
               <div className="section-heading"><div><h2>Company Settings</h2><p>Update your company identity and public listing appearance.</p></div></div>
               <form className="property-form settings-form" onSubmit={async e => { e.preventDefault(); const targetId = isSuperAdmin ? activeCompanyId : companyId; if (!targetId) return alert('Select a company first.'); const { data, error } = await supabase.from('companies').update(companySettings).eq('id', targetId).select('*').single(); if (error) return alert('Update failed: ' + error.message); setCompanyInfo(data); if (isSuperAdmin) setCompanies(prev => prev.map(c => c.id === data.id ? data : c)); alert('Company settings updated.'); }}>
-                {isSuperAdmin && <label>Select Company<select value={activeCompanyId || ''} onChange={e => { setSelectedCompanyId(e.target.value); const c = companies.find(x => x.id === e.target.value); if (c) setCompanySettings({ name: c.name, logo_url: c.logo_url || '', theme_color: c.theme_color || '#b9955b', text_color: c.text_color || '#ffffff', theme_preset: c.theme_preset || 'ivory-gold' }); }}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
+                {isSuperAdmin && <label>Select Company<select value={activeCompanyId || ''} onChange={e => { setSelectedCompanyId(e.target.value); const c = companies.find(x => x.id === e.target.value); if (c) setCompanySettings({ name: c.name, logo_url: c.logo_url || '', theme_color: c.theme_color || '#168653', text_color: c.text_color || '#ffffff', skin_color: c.skin_color || '#f1f5ef', theme_preset: c.theme_preset || 'ivory-gold' }); }}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
                 <label>Company Name<input value={companySettings.name} onChange={e => setCompanySettings(p => ({ ...p, name: e.target.value }))} required /></label>
                 <label>Logo URL<input type="url" value={companySettings.logo_url} onChange={e => setCompanySettings(p => ({ ...p, logo_url: e.target.value }))} placeholder="https://..." /></label>
                 <label className="theme-choice-label">Website Theme<select value={companySettings.theme_preset || 'ivory-gold'} onChange={e => setCompanySettings(p => ({ ...p, theme_preset: e.target.value }))}><option value="ivory-gold">Ivory & Champagne — Signature Luxury</option><option value="charcoal-gold">Charcoal & Champagne — Modern Luxe</option><option value="warm-beige">Warm Beige — Contemporary</option><option value="forest-stone">Forest & Stone — Estate Classic</option></select><small>This theme applies across Viewer, Admin and Super Admin workspace for this company.</small></label>
-                <div className="settings-colour-row"><label>Accent Colour<input type="color" value={companySettings.theme_color} onChange={e => setCompanySettings(p => ({ ...p, theme_color: e.target.value }))} /><small>Custom accent override</small></label><label>Accent Text Colour<input type="color" value={companySettings.text_color} onChange={e => setCompanySettings(p => ({ ...p, text_color: e.target.value }))} /><small>Text on accent surfaces</small></label></div>
+                <div className="settings-colour-row"><label>Brand / Accent Colour<input type="color" value={companySettings.theme_color} onChange={e => setCompanySettings(p => ({ ...p, theme_color: e.target.value }))} /><small>Buttons, highlights and brand elements</small></label><label>Accent Text Colour<input type="color" value={companySettings.text_color} onChange={e => setCompanySettings(p => ({ ...p, text_color: e.target.value }))} /><small>Text on accent surfaces</small></label><label>Skin / Background Colour<input type="color" value={companySettings.skin_color || "#f1f5ef"} onChange={e => setCompanySettings(p => ({ ...p, skin_color: e.target.value }))} /><small>Soft tint for workspace background, cards and sections</small></label></div>
                 <button className="add-button">Save Company Settings</button>
               </form>
             </div>

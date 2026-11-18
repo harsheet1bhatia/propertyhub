@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap');
 
 * {
   margin: 0;
@@ -1446,125 +1446,18 @@ tbody tr:hover td {
   .app *, .login-screen * { animation:none!important; transition:none!important; scroll-behavior:auto!important; }
 }
 
-/* ================================================================
-   PROPERTYHUB REFINEMENT — ADMIN-LED COLOUR + QUIET LUXURY
-   The saved Admin accent colour is the source of truth. No preset
-   can force a gold palette; surfaces use restrained accent tints.
-   ================================================================ */
+/* Company-controlled skin colour: subtle tints, not a full colour wash. */
 .app {
-  --brand: var(--company-accent, #168653);
-  --brand-soft: color-mix(in srgb, var(--brand) 9%, #ffffff);
-  --brand-pale: color-mix(in srgb, var(--brand) 4%, #ffffff);
-  --lux-bg: #f6f8f6;
-  --lux-surface: #ffffff;
-  --lux-panel: var(--brand-pale);
-  --lux-ink: #26332b;
-  --lux-muted: #78837b;
-  --lux-line: #e7ece8;
-  --lux-accent: var(--brand);
-  --lux-accent-soft: var(--brand-soft);
-  --lux-shadow: 0 8px 24px rgba(34, 55, 42, .055);
-  --lux-deep-shadow: 0 14px 34px rgba(34, 55, 42, .095);
-  background: var(--lux-bg) !important;
-  color: var(--lux-ink) !important;
-  font-family: 'DM Sans', sans-serif;
+  --lux-accent: var(--company-accent, #168653);
+  --lux-accent-soft: color-mix(in srgb, var(--company-accent, #168653) 11%, #ffffff);
+  --skin-base: var(--company-skin, #f1f5ef);
+  --lux-bg: color-mix(in srgb, var(--skin-base) 24%, #f8f9f7);
+  --lux-surface: color-mix(in srgb, var(--skin-base) 9%, #ffffff);
+  --lux-panel: color-mix(in srgb, var(--skin-base) 34%, #f4f5f2);
+  --lux-line: color-mix(in srgb, var(--skin-base) 22%, #dedfd9);
 }
-
-/* Keep the workspace bright and let the chosen company colour lead gently. */
-.app .sidebar,
-.app .topbar,
-.app .property-section,
-.app .property-form,
-.app .details-modal,
-.app .stat-card,
-.app .public-property-card,
-.app .company-card,
-.app .table-wrap {
-  background: var(--lux-surface) !important;
-  color: var(--lux-ink) !important;
-  border-color: var(--lux-line) !important;
-  box-shadow: var(--lux-shadow) !important;
-}
-.app .content,
-.app .main { background: var(--lux-bg) !important; }
-.app .sidebar { border-right: 1px solid var(--lux-line) !important; }
-.app .topbar { border-bottom: 1px solid var(--lux-line) !important; }
-
-/* Typography: editorial serif only for company identity; preserve
-   familiar sans-serif styling for property numbers and property types. */
-.app .public-company-header h1,
-.app .public-brand-lockup h1,
-.app .company-name,
-.app .brand-company-name {
-  font-family: 'Cormorant Garamond', Georgia, serif !important;
-  font-weight: 700 !important;
-  letter-spacing: .015em !important;
-}
-.app .brand,
-.app .brand > span { font-family: 'DM Sans', sans-serif !important; }
-.app .public-property-card-title h3,
-.app .public-property-card-title h3 strong,
-.app .public-property-card-title h3 span,
-.app .public-property-card-title small,
-.app .property-number,
-.app .property-type,
-.app table td strong {
-  font-family: 'DM Sans', sans-serif !important;
-  letter-spacing: normal !important;
-  font-weight: 600;
-}
-.app .public-property-card-title h3 { font-size: 15px !important; color: #26332b !important; }
-.app .public-property-card-title small { font-size: 11px !important; color: #7b877f !important; }
-.app .public-property-card-title > strong { color: var(--brand) !important; }
-
-/* Gentle variations of the selected Admin colour across surfaces. */
-.app .brand-icon,
-.app .add-button,
-.app .nav-item.active,
-.app .company-icon,
-.app .avatar {
-  background: var(--brand) !important;
-  border-color: var(--brand) !important;
-  color: #fff !important;
-}
-.app .nav-item.active { background: var(--brand-soft) !important; color: var(--brand) !important; }
-.app .company-icon,.app .avatar { background: var(--brand-soft) !important; color: var(--brand) !important; }
-.app .public-company-header { border-bottom-color: var(--lux-line) !important; }
-.app .public-brand-monogram { background: var(--brand-soft) !important; color: var(--brand) !important; }
-.app .property-photo-collage { background: var(--brand-pale) !important; }
-.app .count,.app .status-badge { background: var(--brand-soft) !important; color: var(--brand) !important; border-color: color-mix(in srgb, var(--brand) 17%, #fff) !important; }
-.app .stat-card strong { color: var(--brand) !important; }
-.app .green,.app a,.app .public-call-link,.app .action-link { color: var(--brand) !important; }
-.app .eyebrow { color: var(--brand) !important; }
-.app input:focus,.app select:focus,.app textarea:focus { border-color: color-mix(in srgb, var(--brand) 55%, #fff) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent) !important; }
-.app .add-button { box-shadow: 0 5px 13px color-mix(in srgb, var(--brand) 17%, transparent) !important; }
-
-/* Remove heavy/dark shadows and give the layout more breathing room. */
-.app .public-property-card { border-radius: 18px !important; box-shadow: 0 7px 22px rgba(34,55,42,.06) !important; }
-.app .public-property-card:hover { box-shadow: 0 13px 30px rgba(34,55,42,.10) !important; transform: translateY(-3px); }
-.app .property-section { padding: 28px !important; border-radius: 20px !important; }
-.app .public-property-grid { gap: 26px !important; }
-.app .public-property-card-content { padding: 21px !important; }
-.app .public-property-card-content > p { margin: 13px 0 17px !important; line-height: 1.6 !important; }
-.app .public-card-actions { gap: 12px !important; }
-.app .public-card-actions > button { min-height: 44px; border-radius: 10px; }
-.app .search-box { gap: 12px !important; padding: 16px !important; }
-.app .stats { gap: 18px !important; }
-.app .stat-card { padding: 22px !important; }
-.app .section-heading { margin-bottom: 20px !important; }
-.app .public-company-header { padding: 25px 0 30px !important; }
-.app .public-brand-lockup { gap: 17px !important; }
-.app .public-brand-lockup img,.app .public-brand-monogram { width: 60px !important; height: 60px !important; flex-basis: 60px !important; }
-.app .public-company-header h1 { font-size: clamp(30px, 3.3vw, 40px) !important; line-height: 1.05 !important; }
-.app .details-modal { padding: 28px !important; }
-.app .cancel-button { box-shadow: none !important; }
-
-@media (max-width:700px) {
-  .app .property-section { padding: 17px !important; }
-  .app .public-property-grid { gap: 20px !important; }
-  .app .public-property-card-content { padding: 18px !important; }
-  .app .public-company-header { padding: 18px 0 22px !important; }
-  .app .public-brand-lockup { gap: 12px !important; }
-  .app .public-brand-lockup img,.app .public-brand-monogram { width: 48px !important; height: 48px !important; flex-basis: 48px !important; }
-  .app .public-company-header h1 { font-size: 29px !important; }
-}
+.app .content { background:var(--lux-bg); }
+.app .sidebar,.app .topbar,.app .property-section,.app .property-form,
+.app .details-modal,.app .stat-card,.app .public-property-card,
+.app .company-card,.app .table-wrap { background:var(--lux-surface); }
+.app .search-box { background:color-mix(in srgb,var(--skin-base) 7%,#fff); }
