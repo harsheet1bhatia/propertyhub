@@ -62,6 +62,7 @@ async function copyPropertyText(property) {
 // Convert a database row into the object used by the UI
 function mapRow(item) {
   return {
+    rowId: item.id,
     id: String(item.property_number),
     sector: item.sector || '',
     location: item.location || '',
@@ -149,7 +150,7 @@ function FilterBar({ filters, setFilter, onReset, sectors }) {
       <input
         value={filters.search}
         onChange={e => setFilter('search', e.target.value)}
-        placeholder="Search by property number, sector, caretaker, rent or type..."
+        placeholder="Search by property number or caretaker name..."
       />
 
       <select value={filters.type} onChange={e => setFilter('type', e.target.value)}>
@@ -213,7 +214,7 @@ function PropertyTable({ rows, onView, publicView }) {
           const allPhotos = (property.media_urls || []).filter(url => !isVideo(url))
           const photos = allPhotos.slice(0, 4)
           return (
-            <article className="public-property-card" key={`public-${property.id}`}>
+            <article className="public-property-card" key={`public-${property.rowId || `${property.id}-${property.sector}-${property.location}`}`}>
               <button className={`property-photo-collage collage-count-${photos.length}`} onClick={() => onView(property)} aria-label={`Open property ${property.id} photos`}>
                 {photos.length ? photos.map((url, index) => (
                   <span className="collage-photo" key={`${url}-${index}`}>
@@ -248,7 +249,7 @@ function PropertyTable({ rows, onView, publicView }) {
         <thead><tr><th>SECTOR</th><th>PROPERTY</th><th>LOCATION</th><th>TYPE</th><th>MONTHLY RENT</th><th>CARETAKER</th><th>PHONE</th><th>DETAILS</th></tr></thead>
         <tbody>
           {rows.map(property => (
-            <tr key={property.id}>
+            <tr key={property.rowId || `${property.id}-${property.sector}-${property.location}`}>
               <td>{property.sector}</td><td><strong>#{property.id}</strong></td><td>{property.location || 'Not added'}</td><td>{property.type}</td><td>{formatRent(property.rent)}</td><td>{property.caretaker || 'Not added'}</td>
               <td>{property.phone ? <a href={phoneHref(property.phone)}>{property.phone}</a> : 'Not added'}</td>
               <td><button className="action-link" onClick={() => onView(property)}>View</button></td>
@@ -673,10 +674,7 @@ function App() {
     const q = filters.search.trim().toLowerCase()
 
     const filtered = properties.filter(p => {
-      const matchesSearch = !q || [
-        p.id, p.sector, p.location, p.type, p.rent,
-        p.caretaker, p.phone, p.details
-      ].some(value => String(value).toLowerCase().includes(q))
+      const matchesSearch = !q || [p.id, p.caretaker].some(value => String(value || '').toLowerCase().includes(q))
 
       return matchesSearch &&
         (filters.type === 'All' || p.type === filters.type) &&
@@ -842,6 +840,7 @@ function App() {
   const openEditForm = (property) => {
     setForm({
       id: property.id,
+      rowId: property.rowId,
       sector: property.sector || '',
       location: property.location || '',
       type: property.type || '1RK',
@@ -852,7 +851,7 @@ function App() {
       details: property.details || ''
     })
 
-    setEditingOriginalId(property.id)
+    setEditingOriginalId(property.rowId)
     setEditingProperty(true)
     setEditingExistingMedia(property.media_urls || [])
     setMedia([])
@@ -889,20 +888,13 @@ function App() {
     const newId = form.id.trim()
     if (!newId) return alert('Property number is required.')
 
-    const duplicate = properties.some(p =>
-      p.id.toLowerCase() === newId.toLowerCase() &&
-      (!editingProperty || p.id !== editingOriginalId)
-    )
-
-    if (duplicate) return alert('Property number already exists.')
-
     setSaving(true)
 
     try {
       const uploadedUrls = await Promise.all(media.map(file => uploadToCloudinary(file)))
 
       const existing = editingProperty
-        ? properties.find(p => p.id === editingOriginalId)
+        ? properties.find(p => p.rowId === editingOriginalId)
         : null
 
       const allMediaUrls = [...(editingProperty ? editingExistingMedia : []), ...uploadedUrls]
@@ -929,6 +921,7 @@ function App() {
 
       const uiRow = {
         id: newId,
+        rowId: existing?.rowId,
         sector: propertyData.sector,
         location: form.location,
         type: form.type,
@@ -945,18 +938,22 @@ function App() {
         const { error } = await supabase
           .from('properties')
           .update(propertyData)
-          .eq('property_number', editingOriginalId)
+          .eq('id', editingOriginalId)
 
         if (error) throw error
 
-        setProperties(prev => prev.map(p => p.id === editingOriginalId ? uiRow : p))
+        setProperties(prev => prev.map(p => p.rowId === editingOriginalId ? uiRow : p))
         alert('Property updated successfully!')
       } else {
-        const { error } = await supabase.from('properties').insert([propertyData])
+        const { data: inserted, error } = await supabase
+          .from('properties')
+          .insert([propertyData])
+          .select('id')
+          .single()
 
         if (error) throw error
 
-        setProperties(prev => [uiRow, ...prev])
+        setProperties(prev => [{ ...uiRow, rowId: inserted.id }, ...prev])
         alert('Property saved successfully!')
       }
 
@@ -976,11 +973,11 @@ function App() {
     const { error } = await supabase
       .from('properties')
       .delete()
-      .eq('property_number', property.id)
+      .eq('id', property.rowId)
 
     if (error) return alert('Delete failed: ' + error.message)
 
-    setProperties(prev => prev.filter(p => p.id !== property.id))
+    setProperties(prev => prev.filter(p => p.rowId !== property.rowId))
     closeDetails()
     alert('Property deleted.')
   }
@@ -992,13 +989,13 @@ function App() {
     const { error } = await supabase
       .from('properties')
       .update({ media_urls: newUrls })
-      .eq('property_number', property.id)
+      .eq('id', property.rowId)
 
     if (error) throw error
 
     const updated = { ...property, media_urls: newUrls }
 
-    setProperties(prev => prev.map(p => p.id === property.id ? updated : p))
+    setProperties(prev => prev.map(p => p.rowId === property.rowId ? updated : p))
     setSelectedProperty(updated)
     setSelectedMedia([])
   }
@@ -1037,12 +1034,12 @@ function App() {
     const { error } = await supabase
       .from('properties')
       .update({ special_videos: newVideos })
-      .eq('property_number', selectedProperty.id)
+      .eq('id', selectedProperty.rowId)
 
     if (error) return alert('Could not remove video: ' + error.message)
 
     const updated = { ...selectedProperty, special_videos: newVideos }
-    setProperties(prev => prev.map(p => p.id === updated.id ? updated : p))
+    setProperties(prev => prev.map(p => p.rowId === updated.rowId ? updated : p))
     setSelectedProperty(updated)
   }
 
@@ -1063,7 +1060,7 @@ function App() {
   /* ---------- Shared modal props ---------- */
   const detailsModal = selectedProperty && (
     <DetailsModal
-      key={selectedProperty.id}
+      key={selectedProperty.rowId || selectedProperty.id}
       property={selectedProperty}
       isAdmin={isAdmin && !isPublic}
       onClose={closeDetails}
@@ -1323,7 +1320,7 @@ function App() {
                   <div className="section-heading">
                     <div>
                       <h2>Property Directory</h2>
-                      <p>Search by property number, sector, caretaker, rent or type.</p>
+                      <p>Search by property number or caretaker name.</p>
                     </div>
                     <span className="count">{sorted.length} shown</span>
                   </div>
