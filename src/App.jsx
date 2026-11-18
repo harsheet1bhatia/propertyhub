@@ -1728,7 +1728,7 @@ function App() {
 
   if (loading || (session && !roleChecked && !isPublic)) {
 
-    return <div className="login-screen"><h2>Loading PropertyHub...</h2></div>
+return <div className="login-screen"><div className="lux-loader"><span className="lux-loader-ring" /><h2>PropertyHub</h2><p>Preparing your workspace…</p></div></div>
 
   }
 
@@ -1747,7 +1747,7 @@ function App() {
           <section className="content">
 
             <div className="public-company-header">
-              <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div>
+              <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1><p className="public-tagline">Handpicked rental residences</p></div></div>
               <span className="count">{properties.length} properties</span>
             </div>
 
@@ -1799,7 +1799,7 @@ function App() {
             <span>Property<span className="green">Hub</span></span>
 
           </div>
-
+<p className="eyebrow">PRIVATE ACCESS</p>
           <h2>Admin Login</h2>
 
           <p>Enter your admin email. We will send you a login link.</p>
