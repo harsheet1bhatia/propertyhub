@@ -49,6 +49,15 @@ function isVideo(url) {
 
 }
 
+// Combine regular uploads and legacy/special video records without duplicates.
+function getPropertyMedia(property) {
+  const regular = Array.isArray(property?.media_urls) ? property.media_urls : []
+  const special = Array.isArray(property?.special_videos)
+    ? property.special_videos.map(item => typeof item === 'string' ? item : item?.url).filter(Boolean)
+    : []
+  return [...new Set([...regular, ...special].filter(Boolean))]
+}
+
 
 
 function formatRent(rent) {
@@ -67,9 +76,9 @@ async function copyPropertyText(property) {
     `Sector: ${property.sector || 'N/A'}`,
     `Property: ${property.id || 'N/A'} (${property.type || 'N/A'})`,
     `Rent: ${formatRent(property.rent)}`,
-    `Location: ${property.location || 'N/A'}`,
-    `Map: ${property.map || 'Not available'}`,
-    `Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
+    `📍 Location: ${property.location || 'N/A'}`,
+    `📍 Map: ${property.map || 'Not available'}`,
+    `📞 Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
   ].join('\n')
   try {
     if (navigator.clipboard?.writeText && window.isSecureContext) await navigator.clipboard.writeText(message)
@@ -124,39 +133,32 @@ function mapRow(item) {
 
 
 async function downloadMediaFiles(urls, propertyId) {
-  const files = (urls || []).filter(Boolean)
-  if (!files.length) return alert('No photos or videos available to download.')
+  const files = (urls || []).filter(url => url && !isVideo(url))
+  if (!files.length) return alert('No photos available to download.')
 
   let downloaded = 0
-  const failed = []
   for (let i = 0; i < files.length; i++) {
-    const url = files[i]
     try {
-      const response = await fetch(url)
-      if (!response.ok) throw new Error(`Download failed (${response.status})`)
+      const response = await fetch(files[i])
+      if (!response.ok) throw new Error('Download failed')
       const blob = await response.blob()
       const objectUrl = URL.createObjectURL(blob)
-      const mime = (blob.type || '').toLowerCase()
-      const video = mime.startsWith('video/') || isVideo(url)
-      const fallbackExt = (url.split('?')[0].split('.').pop() || (video ? 'mp4' : 'jpg')).toLowerCase()
-      const mimeExt = mime.includes('/') ? mime.split('/')[1].split(';')[0] : ''
-      const ext = (mimeExt && mimeExt !== 'octet-stream' ? mimeExt : fallbackExt).replace(/[^a-z0-9]/g, '') || (video ? 'mp4' : 'jpg')
+      const ext = (blob.type.split('/')[1] || files[i].split('.').pop().split('?')[0] || 'jpg').split(';')[0]
       const link = document.createElement('a')
       link.href = objectUrl
-      link.download = `Property-${propertyId}-${video ? 'Video' : 'Photo'}-${i + 1}.${ext}`
+      link.download = `Property-${propertyId}-Photo-${i + 1}.${ext}`
       document.body.appendChild(link)
       link.click()
       link.remove()
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000)
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000)
       downloaded++
-      await new Promise(resolve => window.setTimeout(resolve, 350))
+      // A small gap helps browsers process each individual download.
+      await new Promise(resolve => window.setTimeout(resolve, 250))
     } catch (error) {
-      console.error('Media download failed:', url, error)
-      failed.push(url)
+      console.error('Photo download failed:', files[i], error)
     }
   }
-  if (failed.length) alert(`${downloaded} of ${files.length} files downloaded. ${failed.length} could not be downloaded. If your browser blocked multiple downloads, allow downloads for this site and try again.`)
-  else alert(`All ${downloaded} photos/videos downloaded successfully.`)
+  if (downloaded < files.length) alert(`${downloaded} of ${files.length} photos downloaded. If your browser blocked multiple downloads, allow downloads for this site and try again.`)
 }
 
 
@@ -295,20 +297,20 @@ function PropertyTable({ rows, onView, publicView }) {
     return (
       <div className="property-mobile-cards public-property-grid">
         {rows.map(property => {
-          const allMedia = (property.media_urls || []).filter(Boolean)
-          const mediaItems = allMedia.slice(0, 4)
+          const allMedia = getPropertyMedia(property)
+          const collageMedia = allMedia.slice(0, 4)
           return (
             <article className="public-property-card" key={`public-${property.id}`}>
-              <button className={`property-photo-collage collage-count-${mediaItems.length}`} onClick={() => onView(property)} aria-label={`Open property ${property.id} photos`}>
-                {mediaItems.length ? mediaItems.map((url, index) => (
+              <div className={`property-photo-collage collage-count-${collageMedia.length}`} role="button" tabIndex={0} onClick={() => onView(property)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onView(property) } }} aria-label={`Open property ${property.id} media`}>
+                {collageMedia.length ? collageMedia.map((url, index) => (
                   <span className={`collage-photo ${isVideo(url) ? 'collage-video' : ''}`} key={`${url}-${index}`}>
                     {isVideo(url)
-                      ? <><video src={url} muted playsInline autoPlay loop preload="metadata" aria-label={`Property ${property.id} video ${index + 1}`} /><i className="collage-play-mark">▶</i></>
+                      ? <><video src={url} muted playsInline preload="metadata" onClick={e => { e.stopPropagation(); const current = e.currentTarget; document.querySelectorAll('.collage-video video').forEach(other => { if (other !== current) other.pause() }); if (current.paused) current.play().catch(() => {}); else current.pause() }} /><i className="collage-play-mark" aria-hidden="true">▶</i></>
                       : <img src={url} alt={`Property ${property.id} photo ${index + 1}`} loading="lazy" />}
                     {index === 3 && allMedia.length > 4 && <b>+{allMedia.length - 4}</b>}
                   </span>
                 )) : <span className="collage-empty">No media available</span>}
-              </button>
+              </div>
               <div className="public-property-card-content">
                 <div className="public-property-card-title">
                   <div><small>{property.sector || 'Property'}</small><h3>#{property.id} · {property.type}</h3></div>
@@ -356,7 +358,7 @@ function DetailsModal({
 
 }) {
 
-  const urls = property.media_urls || []
+  const urls = isAdmin ? (property.media_urls || []) : getPropertyMedia(property)
   const photoUrls = urls.filter(url => !isVideo(url))
   const copyPropertyDetails = () => copyPropertyText(property)
 
@@ -409,9 +411,9 @@ function DetailsModal({
 
           <div><h3>Photos & Videos</h3><p>{urls.length} files</p></div>
 
-          {urls.length > 0 && (
-            <button className="add-button" onClick={() => downloadMediaFiles(urls, property.id)}>
-              Download All Media
+          {photoUrls.length > 0 && (
+            <button className="add-button" onClick={() => downloadMediaFiles(photoUrls, property.id)}>
+              Download All Photos
             </button>
           )}
 
@@ -437,8 +439,8 @@ function DetailsModal({
 
             <span>{selectedMedia.length} selected</span>
 
-            <button className="cancel-button" onClick={() => downloadMediaFiles(selectedMedia, property.id)} disabled={!selectedMedia.length}>
-              Download Selected Media
+            <button className="cancel-button" onClick={() => downloadMediaFiles(selectedMedia, property.id)} disabled={!selectedMedia.some(url => !isVideo(url))}>
+              Download Selected
             </button>
 
             <button
@@ -1757,7 +1759,7 @@ function App() {
 
             <div className="public-company-header">
               <div className="public-company-identity">
-                {companyInfo?.logo_url && <img className="public-company-logo" src={companyInfo.logo_url} alt={`${companyInfo?.name || 'Company'} logo`} />}
+                {companyInfo?.logo_url && <span className="public-company-logo-wrap"><img className="public-company-logo" src={companyInfo.logo_url} alt={`${companyInfo?.name || 'Company'} logo`} /></span>}
                 <h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1>
               </div>
               <span className="count">{properties.length} properties</span>
