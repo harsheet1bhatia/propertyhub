@@ -40,6 +40,27 @@ function formatRent(rent) {
   return '₹' + Number(rent || 0).toLocaleString('en-IN')
 }
 
+// A property can have several unit types, each with its own rent (e.g. 1RK + 1BHK).
+// They are stored in the existing `special_videos` JSON column as { units: [...] }.
+function getUnits(p) {
+  return p.units && p.units.length ? p.units : [{ type: p.type, rent: p.rent }]
+}
+function typeLabel(p) {
+  return getUnits(p).map(u => u.type).join(' + ')
+}
+function rentLabel(p) {
+  const rents = getUnits(p).map(u => Number(u.rent) || 0)
+  const lo = Math.min(...rents)
+  const hi = Math.max(...rents)
+  return lo === hi ? formatRent(lo) : `${formatRent(lo)} – ${formatRent(hi)}`
+}
+function cardRent(p) {
+  return getUnits(p).length > 1 ? `From ${formatRent(Math.min(...getUnits(p).map(u => Number(u.rent) || 0)))}` : formatRent(p.rent)
+}
+function buildSpecial(legacy, units, sections) {
+  return [...(legacy || []), ...(units && units.length > 1 ? [{ units }] : []), ...sections]
+}
+
 function phoneHref(phone) {
   const cleaned = String(phone || '').trim().replace(/(?!^)\+/g, '').replace(/[^0-9+]/g, '')
   return cleaned ? `tel:${cleaned}` : undefined
@@ -48,8 +69,8 @@ function phoneHref(phone) {
 async function copyPropertyText(property) {
   const message = [
     `Sector: ${property.sector || 'N/A'}`,
-    `Property: ${property.id || 'N/A'} (${property.type || 'N/A'})`,
-    `Rent: ${formatRent(property.rent)}`,
+    `Property: ${property.id || 'N/A'} (${typeLabel(property) || 'N/A'})`,
+    `Rent: ${getUnits(property).length > 1 ? getUnits(property).map(u => `${u.type} ${formatRent(u.rent)}`).join(' | ') : formatRent(property.rent)}`,
     `📍 Location: ${property.location || 'N/A'}`,
     `🗺️ Map: ${property.map || 'Not available'}`,
     `📞 Caretaker: ${property.caretaker || 'N/A'} (${property.phone || 'N/A'})`
@@ -134,7 +155,8 @@ function mapRow(item) {
     createdAt: item.created_at || '',
     media_urls: item.media_urls || [],
     media_sections: rawSpecial.filter(isSection),
-    special_videos: rawSpecial.filter(entry => !isSection(entry))
+    units: (rawSpecial.find(entry => entry && !isSection(entry) && Array.isArray(entry.units))?.units) || [],
+    special_videos: rawSpecial.filter(entry => !isSection(entry) && !(entry && Array.isArray(entry.units)))
   }
 }
 
@@ -277,8 +299,8 @@ function PropertyTable({ rows, onView, onEdit, onDuplicate, publicView, loadingL
               </button>
               <div className="public-property-card-content">
                 <div className="public-property-card-title">
-                  <div><small>{property.sector || 'Property'}</small><h3>#{property.id} · {property.type}</h3></div>
-                  <strong>{formatRent(property.rent)}<small>/ month</small></strong>
+                  <div><small>{property.sector || 'Property'}</small><h3>#{property.id} · {typeLabel(property)}</h3></div>
+                  <strong>{cardRent(property)}<small>/ month</small></strong>
                 </div>
                 <p>{property.location || 'Location not added'}</p>
                 <div className="public-card-actions">
@@ -302,7 +324,7 @@ function PropertyTable({ rows, onView, onEdit, onDuplicate, publicView, loadingL
         <tbody>
           {rows.map(property => (
             <tr key={property.rowId || `${property.id}-${property.sector}-${property.location}`}>
-              <td>{property.sector}</td><td>{onEdit ? <button className="action-link" onClick={() => onView(property)}><strong>#{property.id}</strong></button> : <strong>#{property.id}</strong>}</td><td>{property.location || 'Not added'}</td><td>{property.type}</td><td>{formatRent(property.rent)}</td><td>{property.caretaker || 'Not added'}</td>
+              <td>{property.sector}</td><td>{onEdit ? <button className="action-link" onClick={() => onView(property)}><strong>#{property.id}</strong></button> : <strong>#{property.id}</strong>}</td><td>{property.location || 'Not added'}</td><td>{typeLabel(property)}</td><td>{rentLabel(property)}</td><td>{property.caretaker || 'Not added'}</td>
               <td>{property.phone ? <a href={phoneHref(property.phone)}>{property.phone}</a> : 'Not added'}</td>
               <td>
                 <div className="row-actions">
@@ -413,13 +435,15 @@ function DetailsModal({
           <div>
             <p className="eyebrow">PROPERTY DETAILS</p>
             <h2>#{property.id}</h2>
-            <p>{property.sector} · {property.type}</p>
+            <p>{property.sector} · {typeLabel(property)}</p>
           </div>
           <button className="close-button" onClick={onClose}>×</button>
         </div>
 
         <div className="details-grid">
-          <div><small>Monthly Rent</small><strong>{formatRent(property.rent)}</strong></div>
+          <div><small>Monthly Rent</small><strong>{getUnits(property).length > 1
+            ? getUnits(property).map((u, i) => <span key={i} style={{ display: 'block' }}>{u.type} · {formatRent(u.rent)}</span>)
+            : formatRent(property.rent)}</strong></div>
           <div><small>Caretaker</small><strong>{property.caretaker || 'Not added'}</strong></div>
           <div><small>Phone</small><strong>{property.phone ? <a href={phoneHref(property.phone)}>{property.phone} · Call</a> : 'Not added'}</strong></div>
         </div>
@@ -636,6 +660,7 @@ function App() {
   const [media, setMedia] = useState([])
   const [uploadGroups, setUploadGroups] = useState([])
   const [copyQuery, setCopyQuery] = useState('')
+  const [units, setUnits] = useState([{ type: '1RK', rent: '' }])
   const [editingExistingMedia, setEditingExistingMedia] = useState([])
   const [saving, setSaving] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState(null)
@@ -799,7 +824,7 @@ function App() {
       const matchesSearch = !q || [p.id, p.caretaker].some(value => String(value || '').toLowerCase().includes(q))
 
       return matchesSearch &&
-        (filters.type === 'All' || p.type === filters.type) &&
+        (filters.type === 'All' || getUnits(p).some(u => u.type === filters.type)) &&
         (filters.sector === 'All' || p.sector === filters.sector)
     })
 
@@ -810,8 +835,8 @@ function App() {
       if (filters.sort === 'rent-low') return a.rent - b.rent
       if (filters.sort === 'rent-high') return b.rent - a.rent
       if (filters.sort === 'type') {
-        const ai = PROPERTY_TYPES.indexOf(a.type)
-        const bi = PROPERTY_TYPES.indexOf(b.type)
+        const ai = PROPERTY_TYPES.indexOf(getUnits(a)[0].type)
+        const bi = PROPERTY_TYPES.indexOf(getUnits(b)[0].type)
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
       }
       return 0
@@ -993,6 +1018,7 @@ function App() {
     setMedia([])
     setUploadGroups([])
     setCopyQuery('')
+    setUnits([{ type: '1RK', rent: '' }])
     setEditingExistingMedia([])
   }
 
@@ -1018,6 +1044,7 @@ function App() {
       details: property.details || ''
     })
     resetFormState()
+    setUnits(getUnits(property).map(u => ({ type: u.type, rent: u.rent })))
     setEditingProperty(false)
     setEditingOriginalId(null)
     setSelectedProperty(null)
@@ -1029,6 +1056,7 @@ function App() {
     setCopyQuery(value)
     const source = properties.find(p => `${p.id} · ${p.sector} · ${p.type}` === value)
     if (!source) return
+    setUnits(getUnits(source).map(u => ({ type: u.type, rent: u.rent })))
     setForm(prev => ({
       ...prev,
       sector: source.sector || '',
@@ -1057,6 +1085,7 @@ function App() {
     })
 
     resetFormState()
+    setUnits(getUnits(property).map(u => ({ type: u.type, rent: u.rent })))
     setEditingOriginalId(property.rowId)
     setEditingProperty(true)
     setEditingExistingMedia(property.media_urls || [])
@@ -1093,6 +1122,8 @@ function App() {
     if (!activeCompanyId) return alert('Select a company before adding a property.')
     const newId = form.id.trim()
     if (!newId) return alert('Property number is required.')
+    if (!units.length || units.some(u => String(u.rent).trim() === '' || Number.isNaN(Number(u.rent)))) return alert('Enter the rent for every property type.')
+    const cleanUnits = units.map(u => ({ type: u.type, rent: Number(u.rent) }))
 
     setSaving(true)
 
@@ -1140,14 +1171,14 @@ function App() {
         property_number: newId,
         sector: form.sector.trim(),
         location: form.location,
-        property_type: form.type,
-        rent: Number(form.rent),
+        property_type: cleanUnits.map(u => u.type).join(' + '),
+        rent: Math.min(...cleanUnits.map(u => u.rent)),
         caretaker_name: form.caretaker,
         caretaker_phone: form.phone,
         map_link: form.map,
         details: form.details,
         media_urls: allMediaUrls,
-        special_videos: [...legacySpecial, ...sections],
+        special_videos: buildSpecial(legacySpecial, cleanUnits, sections),
         ...(editingProperty ? {} : { status: 'Available' })
       }
 
@@ -1157,8 +1188,9 @@ function App() {
         createdAt: existing?.createdAt || new Date().toISOString(),
         sector: propertyData.sector,
         location: form.location,
-        type: form.type,
-        rent: Number(form.rent),
+        type: cleanUnits.map(u => u.type).join(' + '),
+        rent: Math.min(...cleanUnits.map(u => u.rent)),
+        units: cleanUnits.length > 1 ? cleanUnits : [],
         caretaker: form.caretaker,
         phone: form.phone,
         map: form.map,
@@ -1234,7 +1266,7 @@ function App() {
 
     const { error } = await supabase
       .from('properties')
-      .update({ media_urls: newUrls, special_videos: [...(property.special_videos || []), ...sections] })
+      .update({ media_urls: newUrls, special_videos: buildSpecial(property.special_videos, property.units, sections) })
       .eq('id', property.rowId)
 
     if (error) throw error
@@ -1590,14 +1622,29 @@ function App() {
               <label className="full-field">Full Location
                 <input name="location" value={form.location} onChange={updateForm} />
               </label>
-              <label>Property Type
-                <select name="type" value={form.type} onChange={updateForm}>
-                  {PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}
-                </select>
-              </label>
-              <label>Monthly Rent *
-                <input name="rent" type="number" min="0" value={form.rent} onChange={updateForm} required />
-              </label>
+              <div className="full-field units-block">
+                <strong>Property Type & Monthly Rent *</strong>
+                {units.map((unit, i) => (
+                  <div className="unit-row" key={i}>
+                    <select value={unit.type} onChange={e => setUnits(prev => prev.map((u, j) => j === i ? { ...u, type: e.target.value } : u))}>
+                      {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Monthly rent (₹)"
+                      value={unit.rent}
+                      onChange={e => setUnits(prev => prev.map((u, j) => j === i ? { ...u, rent: e.target.value } : u))}
+                      required
+                    />
+                    {units.length > 1 && (
+                      <button type="button" className="cancel-button" onClick={() => setUnits(prev => prev.filter((_, j) => j !== i))}>Remove</button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" className="cancel-button" onClick={() => setUnits(prev => [...prev, { type: '1BHK', rent: '' }])}>+ Add another type (e.g. 1RK + 1BHK)</button>
+                <small>If the property has more than one type, add each type with its own rent.</small>
+              </div>
               <label>Caretaker Name
                 <input name="caretaker" value={form.caretaker} onChange={updateForm} />
               </label>
