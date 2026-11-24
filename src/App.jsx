@@ -648,15 +648,34 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
     }
   }
 
-  const shareOne = async (url, title) => {
+  const shareOne = async (url, title, propertyNumber, index) => {
     try {
-      if (navigator.share) await navigator.share({ title, url })
-      else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url)
-        alert('Tour link copied.')
-      } else window.prompt('Copy tour link:', url)
+      // Share the actual video file, not its Cloudinary URL.
+      if (!navigator.share || !navigator.canShare) {
+        alert('This browser does not support sharing video files. Please use Download and attach the video in your sharing app.')
+        return
+      }
+
+      setBusyShare(`${propertyNumber}-${index}`)
+      const response = await fetch(url, { mode: 'cors' })
+      if (!response.ok) throw new Error('Video could not be fetched')
+      const blob = await response.blob()
+      const mimeType = blob.type && blob.type.startsWith('video/') ? blob.type : 'video/mp4'
+      const videoFile = new File([blob], `Property-${safeName(propertyNumber)}-Tour-${index + 1}.mp4`, { type: mimeType })
+
+      if (!navigator.canShare({ files: [videoFile] })) {
+        alert('Your browser or device cannot share this video file directly. Please use Download and attach the video manually.')
+        return
+      }
+
+      await navigator.share({ files: [videoFile], title, text: title })
     } catch (error) {
-      if (error?.name !== 'AbortError') alert('Could not share this tour.')
+      if (error?.name !== 'AbortError') {
+        console.error('Video share failed:', error)
+        alert('Could not share the video file. Please try Download and share the saved video.')
+      }
+    } finally {
+      setBusyShare('')
     }
   }
 
@@ -697,7 +716,7 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
               <video src={url} controls playsInline preload="metadata" />
               <div className="property-tour-actions">
                 <button className="cancel-button" type="button" onClick={() => downloadOne(url, tour.property_number, index)}>Download</button>
-                <button className="cancel-button" type="button" onClick={() => shareOne(url, `Property ${tour.property_number} - ${tour.sector}`)}>Share</button>
+                <button className="cancel-button" type="button" disabled={busyShare === `${tour.property_number}-${index}`} onClick={() => shareOne(url, `Property ${tour.property_number} - ${tour.sector}`, tour.property_number, index)}>{busyShare === `${tour.property_number}-${index}` ? 'Preparing…' : 'Share Video'}</button>
               </div>
             </div>)}
           </div>
