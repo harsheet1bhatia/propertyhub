@@ -1004,3 +1004,23 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .app .public-card-actions { display: flex !important; flex-wrap: wrap; gap: 10px; }
 .app .public-card-actions .client-share-property-button { display: inline-flex !important; flex: 1 1 100%; width: 100%; min-height: 46px; align-items: center; justify-content: center; visibility: visible !important; opacity: 1 !important; }
 .app .public-header-actions .client-share-all-button { display: inline-flex !important; visibility: visible !important; opacity: 1 !important; }
+
+
+/* Always-visible client sharing toolbar for the public viewer. */
+.app .public-client-share-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin:0 0 22px; padding:16px 18px; border:1px solid #dce8df; border-radius:16px; background:#fff; box-shadow:0 6px 20px rgba(20,45,28,.06); }
+.app .public-client-share-toolbar > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.app .public-client-share-toolbar strong { color:#203328; font-size:14px; }
+.app .public-client-share-toolbar span { color:#718078; font-size:12px; }
+.app .public-client-share-toolbar .client-share-button { flex:0 0 auto; }
+.app .public-card-actions .client-share-property-button { display:inline-flex !important; visibility:visible !important; opacity:1 !important; flex:1 1 100% !important; width:100%; min-height:46px; }
+@media(max-width:700px){ .app .public-client-share-toolbar { align-items:stretch; } .app .public-client-share-toolbar .client-share-button { width:100%; } }
+
+
+/* Broker name field is visible in the top-right of the public viewer header. */
+.app .public-company-header { align-items:center; }
+.app .public-header-actions { display:flex !important; align-items:flex-end; justify-content:flex-end; gap:12px; flex-wrap:wrap; width:auto; }
+.app .public-header-actions .broker-share-name-field { display:flex; flex-direction:column; gap:5px; min-width:220px; }
+.app .public-header-actions .broker-share-name-field label { display:block; color:#52645a; font-size:12px; font-weight:700; }
+.app .public-header-actions .broker-share-name-field input { display:block; width:220px; max-width:100%; min-height:42px; padding:10px 12px; border:1px solid #d7e1d9; border-radius:10px; background:#fff; color:#203328; font:inherit; box-sizing:border-box; }
+.app .public-header-actions .broker-share-name-field input:focus { border-color:#176b42; outline:none; box-shadow:0 0 0 3px rgba(23,107,66,.10); }
+@media(max-width:700px) { .app .public-header-actions { width:100%; justify-content:stretch; align-items:stretch; } .app .public-header-actions .broker-share-name-field, .app .public-header-actions .broker-share-name-field input, .app .public-header-actions .client-share-all-button { width:100%; } }

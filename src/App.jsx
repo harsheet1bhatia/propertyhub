@@ -308,7 +308,7 @@ function PropertyTable({ rows, onView, onEdit, onDuplicate, onShareClient, publi
                 <div className="public-card-actions">
                   <button className="add-button" onClick={() => onView(property)}>View Property</button>
                   <button className="cancel-button" onClick={() => copyPropertyText(property)}>Copy Details</button>
-                  <button type="button" className="client-share-button client-share-property-button" onClick={() => onShareClient?.(property.rowId)} disabled={!property.rowId} title={!property.rowId ? 'Property ID is not available yet' : 'Create a private client link'}>Share with Client</button>
+                  <button type="button" className="client-share-button client-share-property-button" onClick={() => onShareClient?.(property.rowId)} disabled={!property.rowId} title={!property.rowId ? 'Property ID is not available yet' : 'Create a private client link'}>Share Property with Client</button>
                 </div>
                 {property.phone && <a className="public-call-link" href={phoneHref(property.phone)}>Call Caretaker · {property.phone}</a>}
               </div>
@@ -1166,9 +1166,13 @@ function App() {
     const slug = companyInfo?.slug || (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.slug : '')
     if (!slug) return alert('Company link is not ready. Please refresh and try again.')
     try {
+      const displayName = brokerDisplayName.trim()
+      if (!displayName) return alert('Please enter your name in the top-right field before sharing.')
+      try { window.localStorage.setItem('propertyhub_broker_display_name', displayName) } catch {}
       const { data: token, error } = await supabase.rpc('create_client_property_share', {
         p_company_slug: slug,
-        p_property_id: propertyId || null
+        p_property_id: propertyId || null,
+        p_broker_name: displayName
       })
       if (error) throw error
       if (!token) throw new Error('No share token was returned.')
@@ -1626,13 +1630,19 @@ function App() {
             {activeTab === 'Property Tours' ? <>
               <div className="public-company-header">
                 <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
-                <span className="count">{properties.length} properties · {propertyTours.length} property tours</span>
+                <div className="public-header-actions"><div className="broker-share-name-field"><label htmlFor="broker-display-name">Your Name (shown to clients)</label><input id="broker-display-name" type="text" value={brokerDisplayName} onChange={e => { const value = e.target.value; setBrokerDisplayName(value); try { window.localStorage.setItem('propertyhub_broker_display_name', value) } catch {} }} placeholder="Enter your name" maxLength={60} /></div>
+                <button type="button" className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button>
+                  <span className="count">{properties.length} properties · {propertyTours.length} property tours</span>
+                </div>
               </div>
               <PropertyToursPanel tours={propertyTours} isAdmin={false} />
             </> : <>
             <div className="public-company-header">
               <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
-              <div className="public-header-actions"><span className="count">{properties.length} properties</span><button className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button></div>
+              <div className="public-header-actions"><div className="broker-share-name-field"><label htmlFor="broker-display-name">Your Name (shown to clients)</label><input id="broker-display-name" type="text" value={brokerDisplayName} onChange={e => { const value = e.target.value; setBrokerDisplayName(value); try { window.localStorage.setItem('propertyhub_broker_display_name', value) } catch {} }} placeholder="Enter your name" maxLength={60} /></div>
+                <button type="button" className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button>
+                <span className="count">{properties.length} properties</span>
+              </div>
             </div>
 
             <div className="property-section">
