@@ -998,3 +998,9 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .client-share-grid { grid-template-columns: 1fr; gap: 14px; }
   .client-share-card-heading { padding: 15px; }
 }
+
+
+/* Make client sharing actions clearly visible on every public viewer property card. */
+.app .public-card-actions { display: flex !important; flex-wrap: wrap; gap: 10px; }
+.app .public-card-actions .client-share-property-button { display: inline-flex !important; flex: 1 1 100%; width: 100%; min-height: 46px; align-items: center; justify-content: center; visibility: visible !important; opacity: 1 !important; }
+.app .public-header-actions .client-share-all-button { display: inline-flex !important; visibility: visible !important; opacity: 1 !important; }

@@ -20,7 +20,9 @@ const emptyFilters = {
 }
 
 const params = new URLSearchParams(window.location.search)
-const isPublic = params.get('public') === '1'
+const clientShareToken = params.get('client') || ''
+const isClientShare = Boolean(clientShareToken)
+const isPublic = params.get('public') === '1' || isClientShare
 const companySlug = params.get('company') || 'fnf-properties'
 
 function isVideo(url) {
@@ -279,7 +281,7 @@ function Pagination({ currentPage, totalPages, setCurrentPage, itemsPerPage, set
   )
 }
 
-function PropertyTable({ rows, onView, onEdit, onDuplicate, publicView, loadingList }) {
+function PropertyTable({ rows, onView, onEdit, onDuplicate, onShareClient, publicView, loadingList }) {
   const emptyText = loadingList ? 'Loading properties…' : 'No properties found.'
   if (publicView) {
     return (
@@ -306,6 +308,7 @@ function PropertyTable({ rows, onView, onEdit, onDuplicate, publicView, loadingL
                 <div className="public-card-actions">
                   <button className="add-button" onClick={() => onView(property)}>View Property</button>
                   <button className="cancel-button" onClick={() => copyPropertyText(property)}>Copy Details</button>
+                  <button type="button" className="client-share-button client-share-property-button" onClick={() => onShareClient?.(property.rowId)} disabled={!property.rowId} title={!property.rowId ? 'Property ID is not available yet' : 'Create a private client link'}>Share with Client</button>
                 </div>
                 {property.phone && <a className="public-call-link" href={phoneHref(property.phone)}>Call Caretaker · {property.phone}</a>}
               </div>
@@ -766,13 +769,15 @@ function App() {
   const [companySearch, setCompanySearch] = useState('')
   const [adminSearch, setAdminSearch] = useState('')
   const [roleChecked, setRoleChecked] = useState(false)
-  const [loading, setLoading] = useState(!isPublic)
+  const [loading, setLoading] = useState(!isPublic || isClientShare)
   const [listLoading, setListLoading] = useState(true)
   const [email, setEmail] = useState('')
 
   // Data
   const [properties, setProperties] = useState([])
   const [propertyTours, setPropertyTours] = useState([])
+  const [clientShareProperties, setClientShareProperties] = useState([])
+  const [clientShareError, setClientShareError] = useState('')
   const [tourUploading, setTourUploading] = useState(false)
   const [admins, setAdmins] = useState([])
   const [adminEmail, setAdminEmail] = useState('')
@@ -859,6 +864,21 @@ function App() {
     let active = true
     async function loadCompanies() {
       if (isPublic) {
+        if (isClientShare) {
+          const { data, error } = await supabase.rpc('get_client_shared_properties', { p_token: clientShareToken })
+          if (!active) return
+          if (error) {
+            console.error('Client share could not be loaded:', error)
+            setClientShareError('This property link is invalid or unavailable.')
+            setClientShareProperties([])
+          } else {
+            setClientShareProperties(data || [])
+            if (!(data || []).length) setClientShareError('No properties are available on this link.')
+          }
+          setLoading(false)
+          setListLoading(false)
+          return
+        }
         if (!companySlug) { setLoading(false); setListLoading(false); return }
         // Company info and property list load at the same time (faster first paint)
         const [companyRes, propertiesRes, toursRes] = await Promise.all([
@@ -1139,6 +1159,38 @@ function App() {
 
     setAdmins(prev => prev.filter(item => item.user_id !== admin.user_id))
     alert('Admin removed successfully.')
+  }
+
+  /* ---------- Client-safe property sharing ---------- */
+  const shareClientLink = async (propertyId = null) => {
+    const slug = companyInfo?.slug || (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.slug : '')
+    if (!slug) return alert('Company link is not ready. Please refresh and try again.')
+    try {
+      const { data: token, error } = await supabase.rpc('create_client_property_share', {
+        p_company_slug: slug,
+        p_property_id: propertyId || null
+      })
+      if (error) throw error
+      if (!token) throw new Error('No share token was returned.')
+      const link = `${window.location.origin}/?client=${encodeURIComponent(token)}`
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: propertyId ? 'Property Details' : 'Available Properties', text: 'View property photos, videos, sector and rent.', url: link })
+          return
+        } catch (shareError) {
+          if (shareError?.name === 'AbortError') return
+        }
+      }
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(link)
+        alert('Client-safe share link copied. Only photos, videos, sector and rent are visible on this link.')
+      } else {
+        window.prompt('Copy this client-safe share link:', link)
+      }
+    } catch (error) {
+      console.error('Could not create client share link:', error)
+      alert('Could not create share link: ' + (error?.message || 'Please try again.'))
+    }
   }
 
   /* ---------- Property form ---------- */
@@ -1534,6 +1586,33 @@ function App() {
     return <div className="login-screen"><div className="lux-loader"><span className="lux-loader-ring" /><h2>PropertyHub</h2><p>Preparing your workspace…</p></div></div>
   }
 
+  // Client-facing share page: the RPC returns only sector, rent and media URLs.
+  if (isClientShare) {
+    return (
+      <div className="client-share-page">
+        <main className="client-share-content">
+          <div className="client-share-heading"><span>PROPERTY COLLECTION</span><h1>Property Details</h1><p>Photos, videos and monthly rent</p></div>
+          {loading ? <p className="client-share-message">Loading properties…</p> : clientShareError ? <p className="client-share-message">{clientShareError}</p> : (
+            <div className="client-share-grid">
+              {clientShareProperties.map((property, index) => {
+                const mediaItems = Array.isArray(property.media_urls) ? property.media_urls : []
+                return (
+                  <article className="client-share-card" key={`${property.sector || 'sector'}-${index}`}>
+                    <div className="client-share-card-heading"><div><span>SECTOR</span><h2>{property.sector || 'Not specified'}</h2></div><strong>{formatRent(property.rent)}<small>/ month</small></strong></div>
+                    {mediaItems.length ? <div className="client-share-media-grid">{mediaItems.map((url, mediaIndex) => isVideo(url)
+                      ? <video key={`${url}-${mediaIndex}`} src={url} controls playsInline preload="metadata" />
+                      : <img key={`${url}-${mediaIndex}`} src={thumb(url, 900)} alt={`Property photo ${mediaIndex + 1}`} loading="lazy" />
+                    )}</div> : <p className="client-share-no-media">Photos and videos are not available.</p>}
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </main>
+      </div>
+    )
+  }
+
   // Public read-only page
   if (isPublic) {
     return (
@@ -1553,12 +1632,12 @@ function App() {
             </> : <>
             <div className="public-company-header">
               <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
-              <span className="count">{properties.length} properties</span>
+              <div className="public-header-actions"><span className="count">{properties.length} properties</span><button className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button></div>
             </div>
 
             <div className="property-section">
               <FilterBar filters={filters} setFilter={setFilter} onReset={resetFilters} sectors={sectors} />
-              <PropertyTable rows={paginatedProperties} onView={viewProperty} publicView loadingList={listLoading} />
+              <PropertyTable rows={paginatedProperties} onView={viewProperty} onShareClient={shareClientLink} publicView loadingList={listLoading} />
               {pagination}
             </div>
             </>}
