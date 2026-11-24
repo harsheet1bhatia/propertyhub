@@ -628,6 +628,8 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
   const [sector, setSector] = useState('')
   const [files, setFiles] = useState([])
   const [busyShare, setBusyShare] = useState('')
+  const [tourSearch, setTourSearch] = useState('')
+  const filteredTours = tours.filter(tour => `${tour.property_number || ''} ${tour.sector || ''}`.toLowerCase().includes(tourSearch.trim().toLowerCase()))
 
   const downloadOne = async (url, propertyNumber, index) => {
     try {
@@ -662,7 +664,11 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
     <div className="property-section property-tours-section">
       <div className="section-heading">
         <div><h2>Property Tours</h2><p>Watch, download or share property tour videos.</p></div>
-        <span className="count">{tours.length} tours</span>
+        <span className="count">{tours.length} property tours</span>
+      </div>
+
+      <div className="tour-search-wrap">
+        <input className="tour-search-input" type="search" value={tourSearch} onChange={e => setTourSearch(e.target.value)} placeholder="Search by sector or property number..." aria-label="Search tours by sector or property number" />
       </div>
 
       {isAdmin && (
@@ -683,8 +689,8 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
         </form>
       )}
 
-      {tours.length ? <div className="property-tour-grid">
-        {tours.map(tour => <article className="property-tour-card" key={tour.id}>
+      {filteredTours.length ? <div className="property-tour-grid">
+        {filteredTours.map(tour => <article className="property-tour-card" key={tour.id}>
           <div className="property-tour-title"><span>{tour.sector || 'Sector'}</span><h3>Property #{tour.property_number}</h3></div>
           <div className="property-tour-videos">
             {(tour.media_urls || []).map((url, index) => <div className="property-tour-video" key={`${url}-${index}`}>
@@ -697,7 +703,7 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
           </div>
           {isAdmin && <button className="tour-delete-button" type="button" onClick={() => onDelete(tour)}>Delete Tour</button>}
         </article>)}
-      </div> : <div className="tour-empty-state">No property tours uploaded yet.</div>}
+      </div> : <div className="tour-empty-state">{tours.length ? 'No tours match your search.' : 'No property tours uploaded yet.'}</div>}
       <p className="tour-download-note">Videos can be downloaded or shared one at a time. Bulk download is not available.</p>
     </div>
   )
@@ -1497,7 +1503,13 @@ function App() {
         </aside>
         <main className="main" style={{ width: '100%' }}>
           <section className="content">
-            {activeTab === 'Property Tours' ? <PropertyToursPanel tours={propertyTours} isAdmin={false} /> : <>
+            {activeTab === 'Property Tours' ? <>
+              <div className="public-company-header">
+                <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
+                <span className="count">{properties.length} properties · {propertyTours.length} property tours</span>
+              </div>
+              <PropertyToursPanel tours={propertyTours} isAdmin={false} />
+            </> : <>
             <div className="public-company-header">
               <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
               <span className="count">{properties.length} properties</span>

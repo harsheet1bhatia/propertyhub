@@ -959,3 +959,9 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .app .tour-upload-form { padding: 14px; }
   .app .property-tour-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Viewer property-tour search ---------- */
+.app .tour-search-wrap { margin: 0 0 20px; }
+.app .tour-search-input { display: block; width: 100%; min-width: 0; box-sizing: border-box; padding: 14px 16px; border: 1px solid var(--line, #dfe7e0); border-radius: 13px; background: var(--surface, #fff); color: var(--ink, #26372c); font: inherit; font-size: 14px; outline: none; }
+.app .tour-search-input:focus { border-color: var(--acc, #198754); box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc, #198754) 14%, transparent); }
+@media (max-width: 700px) { .app .public-company-header .count { max-width: 100%; white-space: normal; text-align: left; } }
