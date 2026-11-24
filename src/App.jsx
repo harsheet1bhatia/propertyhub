@@ -7,6 +7,8 @@ import { uploadToCloudinary } from './cloudinary'
    Constants & helpers
 ---------------------------------------------------------------- */
 const PROPERTY_TYPES = ['1RK', '1RK Studio', '1BHK', '2BHK', '3BHK', 'Other']
+const FOLDER_KINDS = ['Ground Floor', 'Basement', 'First Floor', 'Rooms', 'Terrace', 'Outside / Common', 'Other']
+const PAGE_SIZES = [30, 60, 100]
 
 const emptyForm = {
   id: '', sector: '', location: '', type: '1RK', rent: '',
@@ -23,6 +25,15 @@ const companySlug = params.get('company') || 'fnf-properties'
 
 function isVideo(url) {
   return /video\/upload/i.test(url) || /\.(mp4|mov|webm)(\?|$)/i.test(url)
+}
+
+// Cloudinary: serve a small, auto-format copy for thumbnails (much faster loading).
+// Downloads / sharing still use the original file.
+function thumb(url, width = 600) {
+  if (!url || isVideo(url)) return url
+  if (!/res\.cloudinary\.com/.test(url) || !/\/upload\//.test(url)) return url
+  if (/\/upload\/(?!v\d)[^/]+\//.test(url)) return url // already transformed
+  return url.replace('/upload/', `/upload/f_auto,q_auto,w_${width}/`)
 }
 
 function formatRent(rent) {
@@ -59,8 +70,56 @@ async function copyPropertyText(property) {
   }
 }
 
+/* ---------- Photo folders (Ground / Basement / Rooms ...) ----------
+   Folders are stored inside the existing `special_videos` JSON column as
+   objects: { id, title, kind, items: [{ url, label }] }.
+   `media_urls` still holds every file, so old properties keep working. */
+function isSection(entry) {
+  return !!entry && typeof entry === 'object' && Array.isArray(entry.items)
+}
+
+function folderTitle(kind, rooms, custom) {
+  if (kind === 'Rooms') {
+    const list = String(rooms || '').split(/[,\s]+/).filter(Boolean).join(', ')
+    return list ? `Rooms ${list}` : 'Rooms'
+  }
+  if (kind === 'Other') return String(custom || '').trim() || 'Other'
+  return kind
+}
+
+// Turn a file name into a room label shown to the viewer (e.g. "Room 4").
+function fileLabel(name) {
+  const base = String(name || '').replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim()
+  if (!base) return ''
+  if (/^\d{1,3}[a-z]?$/i.test(base)) return `Room ${base.toUpperCase()}`
+  if (/room/i.test(base)) return base.length > 30 ? base.slice(0, 30) + '…' : base
+  if (/^(img|image|dsc|dscn|pxl|photo|screenshot|vid|video|whatsapp|mvimg)/i.test(base) || /^\d{6,}/.test(base)) return ''
+  return base.length > 30 ? base.slice(0, 30) + '…' : base
+}
+
+function getFolders(property) {
+  const all = property.media_urls || []
+  const present = new Set(all)
+  const used = new Set()
+  const folders = []
+  for (const section of property.media_sections || []) {
+    const items = (section.items || [])
+      .filter(item => present.has(item.url) && !used.has(item.url))
+      .map(item => ({ ...item, folder: section.title }))
+    items.forEach(item => used.add(item.url))
+    if (items.length) folders.push({ id: section.id || section.title, title: section.title, kind: section.kind, items })
+  }
+  const rest = all.filter(url => !used.has(url))
+  if (rest.length) {
+    const title = folders.length ? 'Other Photos & Videos' : 'Photos & Videos'
+    folders.push({ id: '__general', title, kind: 'General', items: rest.map(url => ({ url, label: '', folder: title })) })
+  }
+  return folders
+}
+
 // Convert a database row into the object used by the UI
 function mapRow(item) {
+  const rawSpecial = Array.isArray(item.special_videos) ? item.special_videos : []
   return {
     rowId: item.id,
     id: String(item.property_number),
@@ -72,73 +131,66 @@ function mapRow(item) {
     phone: item.caretaker_phone || '',
     map: item.map_link || '',
     details: item.details || '',
+    createdAt: item.created_at || '',
     media_urls: item.media_urls || [],
-    special_videos: Array.isArray(item.special_videos) ? item.special_videos : []
+    media_sections: rawSpecial.filter(isSection),
+    special_videos: rawSpecial.filter(entry => !isSection(entry))
   }
 }
 
-// Detect iPhone/iPad Safari so we can prepare the complete batch before
-// the final tap. iOS requires the Share action to happen directly from a
-// user gesture; waiting for network requests first can lose that permission.
 function isIOSDevice() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
 
-async function preparePhotoFiles(urls, propertyId) {
-  const photos = (urls || []).filter(url => url && !isVideo(url))
-  if (!photos.length) throw new Error('No photos available to download.')
-
-  const propertyLabel = String(propertyId).replace(/[^a-z0-9_-]/gi, '') || 'Property'
-  return Promise.all(photos.map(async (photoUrl, index) => {
-    const response = await fetch(photoUrl, { mode: 'cors' })
-    if (!response.ok) throw new Error(`Photo ${index + 1} could not be loaded (HTTP ${response.status}).`)
-    const blob = await response.blob()
-    const mime = (blob.type || 'image/jpeg').split(';')[0].toLowerCase()
-    if (!mime.startsWith('image/')) throw new Error(`Photo ${index + 1} is not a supported image.`)
-    const mimeExtension = mime.split('/')[1]
-    const urlExtension = photoUrl.split('?')[0].split('.').pop()
-    const extension = (mimeExtension === 'jpeg' ? 'jpg' : mimeExtension || urlExtension || 'jpg')
-      .replace(/[^a-z0-9]/g, '') || 'jpg'
-    return new File([blob], `Property-${propertyLabel}-Photo-${index + 1}.${extension}`, { type: mime })
-  }))
+function safeName(value) {
+  return String(value || '').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'Property'
 }
 
-// Individual downloads remain unchanged for Android and desktop browsers.
-async function downloadMediaFiles(urls, propertyId) {
-  const files = (urls || []).filter(url => url && !isVideo(url))
-  if (!files.length) return alert('No photos available to download.')
+async function fetchMediaFile(item, propertyId, index) {
+  const response = await fetch(item.url, { mode: 'cors' })
+  if (!response.ok) throw new Error(`File ${index + 1} could not be loaded (HTTP ${response.status}).`)
+  const blob = await response.blob()
+  const mime = (blob.type || (isVideo(item.url) ? 'video/mp4' : 'image/jpeg')).split(';')[0].toLowerCase()
+  const sub = mime.split('/')[1] || 'jpg'
+  const ext = (sub === 'jpeg' ? 'jpg' : sub === 'quicktime' ? 'mov' : sub).replace(/[^a-z0-9]/g, '') || 'jpg'
+  const parts = [`Property-${safeName(propertyId)}`]
+  if (item.folder && item.folder !== 'Photos & Videos') parts.push(safeName(item.folder))
+  parts.push(String(index + 1).padStart(2, '0'))
+  if (item.label) parts.push(safeName(item.label))
+  return new File([blob], `${parts.join('_')}.${ext}`, { type: mime })
+}
 
-  let downloaded = 0
+function prepareFiles(items, propertyId) {
+  return Promise.all(items.map((item, index) => fetchMediaFile(item, propertyId, index)))
+}
+
+async function downloadFiles(items, propertyId, onStatus) {
+  let ok = 0
   const failed = []
-  for (let i = 0; i < files.length; i++) {
+  for (let i = 0; i < items.length; i++) {
+    onStatus?.(`Downloading ${i + 1} of ${items.length}…`)
     try {
-      const response = await fetch(files[i], { mode: 'cors' })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const blob = await response.blob()
-      const contentType = (blob.type || '').toLowerCase()
-      const mimeExtension = contentType.split('/')[1]?.split(';')[0]
-      const urlExtension = files[i].split('?')[0].split('.').pop()
-      const extension = (mimeExtension || urlExtension || 'jpg').replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '') || 'jpg'
-      const objectUrl = URL.createObjectURL(blob)
+      const file = await fetchMediaFile(items[i], propertyId, i)
+      const objectUrl = URL.createObjectURL(file)
       const link = document.createElement('a')
       link.href = objectUrl
-      link.download = `Property-${String(propertyId).replace(/[^a-z0-9_-]/gi, '')}-Photo-${i + 1}.${extension}`
+      link.download = file.name
       link.style.display = 'none'
       document.body.appendChild(link)
       link.click()
       link.remove()
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000)
-      downloaded++
-      await new Promise(resolve => window.setTimeout(resolve, 700))
+      ok++
+      await new Promise(resolve => window.setTimeout(resolve, 500))
     } catch (error) {
-      console.error('Photo download failed:', files[i], error)
+      console.error('Download failed:', items[i]?.url, error)
       failed.push(i + 1)
     }
   }
-
-  if (failed.length) alert(`${downloaded} of ${files.length} photos downloaded. Photos ${failed.join(', ')} could not be downloaded.`)
-  else alert(`${downloaded} photos downloaded individually. On iPhone, check Safari Downloads in the Files app.`)
+  onStatus?.(failed.length
+    ? `${ok} of ${items.length} downloaded. Could not download: ${failed.join(', ')}.`
+    : `${ok} file(s) downloaded. Check your Downloads / Files app.`)
 }
 
 /* ---------------------------------------------------------------
@@ -200,13 +252,14 @@ function Pagination({ currentPage, totalPages, setCurrentPage, itemsPerPage, set
       </button>
 
       <select value={itemsPerPage} onChange={e => setItemsPerPage(Number(e.target.value))}>
-        {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
+        {PAGE_SIZES.map(n => <option key={n} value={n}>{n} / page</option>)}
       </select>
     </div>
   )
 }
 
-function PropertyTable({ rows, onView, publicView }) {
+function PropertyTable({ rows, onView, onDuplicate, publicView, loadingList }) {
+  const emptyText = loadingList ? 'Loading properties…' : 'No properties found.'
   if (publicView) {
     return (
       <div className="property-mobile-cards public-property-grid">
@@ -218,7 +271,7 @@ function PropertyTable({ rows, onView, publicView }) {
               <button className={`property-photo-collage collage-count-${photos.length}`} onClick={() => onView(property)} aria-label={`Open property ${property.id} photos`}>
                 {photos.length ? photos.map((url, index) => (
                   <span className="collage-photo" key={`${url}-${index}`}>
-                    <img src={url} alt={`Property ${property.id} photo ${index + 1}`} loading="lazy" />
+                    <img src={thumb(url, 500)} alt={`Property ${property.id} photo ${index + 1}`} loading="lazy" decoding="async" />
                     {index === 3 && allPhotos.length > 4 && <b>+{allPhotos.length - 4}</b>}
                   </span>
                 )) : <span className="collage-empty">No photos available</span>}
@@ -238,7 +291,7 @@ function PropertyTable({ rows, onView, publicView }) {
             </article>
           )
         })}
-        {!rows.length && <p className="public-empty-state">No properties found.</p>}
+        {!rows.length && <p className="public-empty-state">{emptyText}</p>}
       </div>
     )
   }
@@ -252,10 +305,15 @@ function PropertyTable({ rows, onView, publicView }) {
             <tr key={property.rowId || `${property.id}-${property.sector}-${property.location}`}>
               <td>{property.sector}</td><td><strong>#{property.id}</strong></td><td>{property.location || 'Not added'}</td><td>{property.type}</td><td>{formatRent(property.rent)}</td><td>{property.caretaker || 'Not added'}</td>
               <td>{property.phone ? <a href={phoneHref(property.phone)}>{property.phone}</a> : 'Not added'}</td>
-              <td><button className="action-link" onClick={() => onView(property)}>View</button></td>
+              <td>
+                <div className="row-actions">
+                  <button className="action-link" onClick={() => onView(property)}>View</button>
+                  {onDuplicate && <button className="action-link" onClick={() => onDuplicate(property)}>Duplicate</button>}
+                </div>
+              </td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan="8">No properties found.</td></tr>}
+          {!rows.length && <tr><td colSpan="8">{emptyText}</td></tr>}
         </tbody>
       </table>
     </div>
@@ -263,61 +321,88 @@ function PropertyTable({ rows, onView, publicView }) {
 }
 
 function DetailsModal({
-  property, isAdmin, onClose, onEdit, onDelete, onPreview,
-  selectedMedia, setSelectedMedia, onRemoveOne, onRemoveSelected, onReplace, onRemoveSpecial
+  property, isAdmin, onClose, onEdit, onDelete, onDuplicate, onPreview,
+  selectedMedia, setSelectedMedia, onRemoveOne, onRemoveSelected, onReplace
 }) {
-  const urls = property.media_urls || []
-  const photoUrls = urls.filter(url => !isVideo(url))
-  const [preparedShareFiles, setPreparedShareFiles] = useState(null)
-  const [preparingPhotos, setPreparingPhotos] = useState(false)
-  const [shareError, setShareError] = useState('')
+  const folders = useMemo(() => getFolders(property), [property])
+  const [openFolder, setOpenFolder] = useState(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(null)
+  const [notice, setNotice] = useState('')
   const copyPropertyDetails = () => copyPropertyText(property)
 
-  useEffect(() => {
-    setPreparedShareFiles(null)
-    setPreparingPhotos(false)
-    setShareError('')
-  }, [property.id])
+  const currentFolder = folders.find(f => f.id === openFolder) || (folders.length === 1 ? folders[0] : null)
+  const showOverview = folders.length > 1 && !currentFolder
+  const visibleItems = currentFolder ? currentFolder.items : folders.flatMap(f => f.items)
+  const visibleUrls = new Set(visibleItems.map(i => i.url))
+  const selectedVisible = selectedMedia.filter(url => visibleUrls.has(url))
+  const actionItems = selectedVisible.length ? visibleItems.filter(i => selectedVisible.includes(i.url)) : visibleItems
+  const sig = actionItems.map(i => i.url).join('|')
+  const countLabel = selectedVisible.length ? `Selected (${actionItems.length})` : `All (${actionItems.length})`
+  const readyNow = ready && ready.sig === sig
+  const canShare = typeof navigator !== 'undefined' && !!navigator.share && !!navigator.canShare
+  const totalFiles = (property.media_urls || []).length
 
-  const handleDownloadAllPhotos = async () => {
-    if (!isIOSDevice()) {
-      downloadMediaFiles(photoUrls, property.id)
-      return
-    }
+  const openFolderById = (id) => { setOpenFolder(id); setSelectMode(false); setSelectedMedia([]); setReady(null); setNotice('') }
+  const toggleSelectMode = () => { setSelectMode(v => !v); setSelectedMedia([]); setReady(null) }
 
-    // First tap prepares every photo. The next tap opens Share Sheet directly
-    // from the button gesture, avoiding iOS Safari's expired-gesture issue.
-    if (!preparedShareFiles) {
-      setPreparingPhotos(true)
-      setShareError('')
+  const handleDownload = async () => {
+    if (!actionItems.length || busy) return
+    setBusy(true)
+    setNotice('')
+    await downloadFiles(actionItems, property.id, setNotice)
+    setBusy(false)
+  }
+
+  // Share opens the phone's share sheet (WhatsApp etc.) without saving files first.
+  // iPhone needs the share to start straight from a tap, so files are prepared on the
+  // first tap and shared on the next one. Android usually shares in one tap.
+  const handleShare = async () => {
+    if (!actionItems.length || busy) return
+    setNotice('')
+
+    if (readyNow) {
       try {
-        const prepared = await preparePhotoFiles(photoUrls, property.id)
-        setPreparedShareFiles(prepared)
+        await navigator.share({ files: ready.files })
+        setReady(null)
       } catch (error) {
-        console.error('Could not prepare all property photos:', error)
-        setShareError(error.message || 'Some photos could not be prepared. Please try again.')
-      } finally {
-        setPreparingPhotos(false)
+        if (error?.name !== 'AbortError') {
+          console.error('Share failed:', error)
+          setNotice('Could not open share. Please tap Share again.')
+        }
       }
       return
     }
 
-    if (!navigator.canShare || !navigator.canShare({ files: preparedShareFiles }) || !navigator.share) {
-      setShareError('This iPhone browser does not support sharing this complete photo set. Please open the page in Safari and try again.')
-      return
-    }
-
+    setBusy(true)
+    let files
     try {
-      // IMPORTANT: iOS Safari works more reliably when the payload contains
-      // only files. Do not add title, text, or URL alongside the images.
-      await navigator.share({ files: preparedShareFiles })
-      setPreparedShareFiles(null)
+      files = await prepareFiles(actionItems, property.id)
     } catch (error) {
-      if (error?.name !== 'AbortError') {
-        console.error('iPhone photo sharing failed:', error)
-        setShareError('iPhone could not share this photo set. Keep this page open and tap Share All Photos again.')
+      console.error('Could not prepare files:', error)
+      setNotice(error.message || 'Files could not be prepared. Please try again.')
+      setBusy(false)
+      return
+    }
+    setBusy(false)
+
+    if (!navigator.canShare({ files })) {
+      setNotice('This browser cannot share these files directly. Please use Download instead.')
+      return
+    }
+
+    if (!isIOSDevice()) {
+      try {
+        await navigator.share({ files })
+        return
+      } catch (error) {
+        if (error?.name === 'AbortError') return
       }
     }
+
+    setReady({ sig, files })
+    setNotice(`${files.length} file(s) are ready. Tap Share once more to choose WhatsApp or any app.`)
   }
 
   return (
@@ -342,90 +427,116 @@ function DetailsModal({
         {property.details && <p className="detail-line"><strong>Details:</strong> {property.details}</p>}
 
         <div className="gallery-heading">
-          <div><h3>Photos & Videos</h3><p>{urls.length} files</p></div>
-          {photoUrls.length > 0 && (
-            <button className="add-button" onClick={handleDownloadAllPhotos} disabled={preparingPhotos}>
-              {preparingPhotos ? 'Preparing All Photos…' : preparedShareFiles ? `Share All ${preparedShareFiles.length} Photos` : 'Download All Photos'}
-            </button>
+          <div>
+            <h3>{currentFolder && folders.length > 1 ? currentFolder.title : 'Photos & Videos'}</h3>
+            <p>{currentFolder ? `${currentFolder.items.length} files` : `${totalFiles} files in ${folders.length} folders`}</p>
+          </div>
+          {currentFolder && folders.length > 1 && (
+            <button className="cancel-button" onClick={() => openFolderById(null)}>← All folders</button>
           )}
         </div>
 
-        {isIOSDevice() && preparedShareFiles && (
-          <p className="detail-line">All {preparedShareFiles.length} photos are ready. Tap <strong>Share All {preparedShareFiles.length} Photos</strong>, then choose the iPhone save option.</p>
-        )}
-        {shareError && <p className="detail-line" role="alert">{shareError}</p>}
-
-        {isAdmin && urls.length > 0 && (
-          <div className="gallery-tools">
-            <button
-              className="cancel-button"
-              onClick={() => setSelectedMedia(selectedMedia.length === urls.length ? [] : [...urls])}
-            >
-              Select All / None
-            </button>
-            <span>{selectedMedia.length} selected</span>
-            <button className="cancel-button" onClick={() => downloadMediaFiles(selectedMedia, property.id)} disabled={!selectedMedia.some(url => !isVideo(url))}>
-              Download Selected
-            </button>
-            <button
-              className="cancel-button"
-              onClick={onRemoveSelected}
-              disabled={!selectedMedia.length}
-            >
-              Delete Selected
-            </button>
+        {visibleItems.length > 0 && (
+          <div className="gallery-actions">
+            {!showOverview && (
+              <button className="cancel-button" onClick={toggleSelectMode}>{selectMode ? 'Done' : 'Select'}</button>
+            )}
+            {selectMode && !showOverview && (
+              <>
+                <button className="cancel-button" onClick={() => setSelectedMedia(selectedVisible.length === visibleItems.length ? [] : visibleItems.map(i => i.url))}>
+                  Select All / None
+                </button>
+                <span>{selectedVisible.length} selected</span>
+              </>
+            )}
+            <button className="add-button" onClick={handleDownload} disabled={busy}>⬇ Download {countLabel}</button>
+            {canShare && (
+              <button className="add-button" onClick={handleShare} disabled={busy}>
+                {busy ? 'Please wait…' : readyNow ? `↗ Tap to Share (${actionItems.length})` : `↗ Share ${countLabel}`}
+              </button>
+            )}
+            {isAdmin && selectMode && !showOverview && (
+              <button className="cancel-button" onClick={onRemoveSelected} disabled={!selectedVisible.length}>Delete Selected</button>
+            )}
           </div>
         )}
+        {notice && <p className="detail-line" role="status">{notice}</p>}
 
-        <div className="media-gallery">
-          {urls.map((url, index) => (
-            <div className="gallery-item" key={url}>
-              {isAdmin && (
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={selectedMedia.includes(url)}
-                    onChange={() => setSelectedMedia(prev =>
-                      prev.includes(url) ? prev.filter(x => x !== url) : [...prev, url]
+        {showOverview ? (
+          <div className="folder-grid">
+            {folders.map(folder => {
+              const cover = folder.items.find(i => !isVideo(i.url))
+              return (
+                <button key={folder.id} className="folder-card" onClick={() => openFolderById(folder.id)}>
+                  <span className="folder-cover">
+                    {cover ? <img src={thumb(cover.url, 420)} alt={folder.title} loading="lazy" decoding="async" /> : <span className="folder-icon">🎬</span>}
+                    <b>{folder.items.length}</b>
+                  </span>
+                  <span className="folder-name">{folder.title}</span>
+                  <small>{folder.items.length} files</small>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="media-gallery">
+            {visibleItems.map(item => {
+              const checked = selectedMedia.includes(item.url)
+              const photoItems = visibleItems.filter(i => !isVideo(i.url))
+              return (
+                <div className={`gallery-item ${selectMode && checked ? 'is-selected' : ''}`} key={item.url}>
+                  {selectMode && (
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => setSelectedMedia(prev => prev.includes(item.url) ? prev.filter(x => x !== item.url) : [...prev, item.url])}
+                      />
+                      Select
+                    </label>
+                  )}
+
+                  {isVideo(item.url)
+                    ? <video src={item.url} controls preload="metadata" />
+                    : (
+                      <button
+                        className="gallery-image-button"
+                        onClick={() => onPreview(
+                          photoItems.map(i => ({ url: i.url, propertyId: property.id, label: i.label, folder: i.folder })),
+                          photoItems.findIndex(i => i.url === item.url)
+                        )}
+                      >
+                        <img src={thumb(item.url, 420)} alt={item.label || 'Property photo'} loading="lazy" decoding="async" />
+                        <span>View photo</span>
+                      </button>
                     )}
-                  />
-                  Select
-                </label>
-              )}
 
-              {isVideo(url)
-                ? <video src={url} controls preload="metadata" />
-                : (
-                  <button className="gallery-image-button" onClick={() => onPreview(url)}>
-                    <img src={url} alt={`Property ${index + 1}`} />
-                    <span>View photo</span>
-                  </button>
-                )}
+                  {item.label && <p className="media-caption">{item.label}</p>}
 
-              {isAdmin && (
-                <div className="media-management-actions">
-                  <label className="replace-media-button">
-                    Replace
-                    <input
-                      type="file"
-                      accept="image/*,video/*"
-                      hidden
-                      onChange={e => {
-                        onReplace(url, e.target.files?.[0])
-                        e.target.value = ''
-                      }}
-                    />
-                  </label>
-                  <button className="media-delete-button" onClick={() => onRemoveOne(url)}>Delete</button>
+                  {isAdmin && (
+                    <div className="media-management-actions">
+                      <label className="replace-media-button">
+                        Replace
+                        <input
+                          type="file"
+                          accept="image/*,video/*"
+                          hidden
+                          onChange={e => {
+                            onReplace(item.url, e.target.files?.[0])
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      <button className="media-delete-button" onClick={() => onRemoveOne(item.url)}>Delete</button>
+                    </div>
+                  )}
+
+                  <a className="media-download" href={item.url} target="_blank" rel="noreferrer">Open</a>
                 </div>
-              )}
-
-              <a className="media-download" href={url} target="_blank" rel="noreferrer">
-                Open / Download
-              </a>
-            </div>
-          ))}
-        </div>
+              )
+            })}
+          </div>
+        )}
 
         <div className="details-actions">
           <button className="add-button" onClick={copyPropertyDetails}>Copy Details</button>
@@ -433,6 +544,7 @@ function DetailsModal({
           {isAdmin && (
             <>
               <button className="add-button" onClick={() => onEdit(property)}>Edit Property</button>
+              <button className="cancel-button" onClick={() => onDuplicate(property)}>Duplicate</button>
               <button className="cancel-button" onClick={() => onDelete(property)}>Delete Property</button>
             </>
           )}
@@ -472,13 +584,14 @@ function ImagePreview({ images, initialIndex = 0, onClose }) {
   }, [images.length])
 
   if (!current) return null
+  const caption = [`Property #${current.propertyId}`, current.folder && current.folder !== 'Photos & Videos' ? current.folder : '', current.label].filter(Boolean).join(' · ')
   return (
     <div className="image-preview-overlay" onClick={onClose} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <button className="preview-close" onClick={onClose}>×</button>
       <button className="preview-nav preview-prev" onClick={e => { e.stopPropagation(); move(-1) }} disabled={index === 0}>‹</button>
       <div className="preview-content" onClick={e => e.stopPropagation()} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        <img src={current.url} alt={`Property ${current.propertyId} photo ${index + 1}`} />
-        <p>Property #{current.propertyId} · {index + 1} / {images.length}</p>
+        <img src={thumb(current.url, 1600)} alt={`Property ${current.propertyId} photo ${index + 1}`} />
+        <p>{caption} · {index + 1} / {images.length}</p>
       </div>
       <button className="preview-nav preview-next" onClick={e => { e.stopPropagation(); move(1) }} disabled={index === images.length - 1}>›</button>
     </div>
@@ -502,6 +615,7 @@ function App() {
   const [adminSearch, setAdminSearch] = useState('')
   const [roleChecked, setRoleChecked] = useState(false)
   const [loading, setLoading] = useState(!isPublic)
+  const [listLoading, setListLoading] = useState(true)
   const [email, setEmail] = useState('')
 
   // Data
@@ -511,7 +625,7 @@ function App() {
 
   // List controls
   const [filters, setFilters] = useState(emptyFilters)
-  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [itemsPerPage, setItemsPerPage] = useState(PAGE_SIZES[0])
   const [currentPage, setCurrentPage] = useState(1)
   const [activeTab, setActiveTab] = useState('All Properties')
 
@@ -519,8 +633,9 @@ function App() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [media, setMedia] = useState([])
+  const [uploadGroups, setUploadGroups] = useState([])
+  const [copyQuery, setCopyQuery] = useState('')
   const [editingExistingMedia, setEditingExistingMedia] = useState([])
-  const [specialFiles, setSpecialFiles] = useState({})
   const [saving, setSaving] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [previewMedia, setPreviewMedia] = useState(null)
@@ -589,16 +704,19 @@ function App() {
     let active = true
     async function loadCompanies() {
       if (isPublic) {
-        if (!companySlug) { setLoading(false); return }
-        const { data: companyData, error: companyError } = await supabase.rpc('get_public_company_by_slug', { company_slug: companySlug })
+        if (!companySlug) { setLoading(false); setListLoading(false); return }
+        // Company info and property list load at the same time (faster first paint)
+        const [companyRes, propertiesRes] = await Promise.all([
+          supabase.rpc('get_public_company_by_slug', { company_slug: companySlug }),
+          supabase.rpc('get_public_company_properties', { company_slug: companySlug })
+        ])
         if (!active) return
-        if (companyError || !companyData) { console.error(companyError); setProperties([]); setLoading(false); return }
-        setCompanyInfo(companyData)
-        const { data, error } = await supabase.rpc('get_public_company_properties', { company_slug: companySlug })
-        if (!active) return
-        if (error) console.error(error)
-        setProperties((data || []).map(mapRow))
+        if (companyRes.error || !companyRes.data) { console.error(companyRes.error); setProperties([]); setLoading(false); setListLoading(false); return }
+        setCompanyInfo(companyRes.data)
+        if (propertiesRes.error) console.error(propertiesRes.error)
+        setProperties((propertiesRes.data || []).map(mapRow))
         setLoading(false)
+        setListLoading(false)
         return
       }
       if (!role) return
@@ -608,6 +726,7 @@ function App() {
         if (error) { console.error(error); return }
         setCompanies(data || [])
         setSelectedCompanyId(prev => prev || data?.[0]?.id || '')
+        if (!data?.length) setListLoading(false)
       } else if (companyId) {
         const { data, error } = await supabase.from('companies').select('*').eq('id', companyId).single()
         if (!active) return
@@ -626,8 +745,10 @@ function App() {
     if (!role || !activeCompanyId) { setProperties([]); return }
     let active = true
     async function loadProperties() {
+      setListLoading(true)
       const { data, error } = await supabase.from('properties').select('*').eq('company_id', activeCompanyId).order('created_at', { ascending: false })
       if (!active) return
+      setListLoading(false)
       if (error) { console.error(error); return }
       setProperties((data || []).map(mapRow))
     }
@@ -682,7 +803,9 @@ function App() {
     })
 
     return [...filtered].sort((a, b) => {
-      if (filters.sort === 'sector' || filters.sort === 'default') return String(a.sector || '').localeCompare(String(b.sector || ''), undefined, { numeric: true, sensitivity: 'base' })
+      // "Newest First" really is newest first now; Sector (A-Z) is its own option.
+      if (filters.sort === 'default') return String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+      if (filters.sort === 'sector') return String(a.sector || '').localeCompare(String(b.sector || ''), undefined, { numeric: true, sensitivity: 'base' })
       if (filters.sort === 'rent-low') return a.rent - b.rent
       if (filters.sort === 'rent-high') return b.rent - a.rent
       if (filters.sort === 'type') {
@@ -779,6 +902,44 @@ function App() {
     alert(nextActive ? 'Company access restored.' : 'Company put on hold. Admins and public viewers are blocked.')
   }
 
+  // Permanently delete a company with its properties and admins (super admin only).
+  const deleteCompany = async (company) => {
+    if (!isSuperAdmin) return
+    const typed = window.prompt(
+      `This will PERMANENTLY delete "${company.name}" together with ALL its properties and admins. This cannot be undone.\n\nType the company name to confirm:`
+    )
+    if (typed === null) return
+    if (typed.trim().toLowerCase() !== String(company.name || '').trim().toLowerCase()) {
+      return alert('Name did not match. Company was not deleted.')
+    }
+
+    const { error: propertiesError } = await supabase.from('properties').delete().eq('company_id', company.id)
+    if (propertiesError) return alert('Could not delete properties: ' + propertiesError.message)
+
+    const { error: adminsError } = await supabase
+      .from('propertyhub_admins')
+      .delete()
+      .eq('company_id', company.id)
+      .neq('role', 'super_admin')
+    if (adminsError) return alert('Could not delete company admins: ' + adminsError.message)
+
+    const { data: removed, error: companyError } = await supabase
+      .from('companies')
+      .delete()
+      .eq('id', company.id)
+      .select('id')
+    if (companyError) return alert('Could not delete company: ' + companyError.message)
+    if (!removed?.length) return alert('Company was not deleted. The database blocked it (check the delete permission for super admin).')
+
+    const remaining = companies.filter(c => c.id !== company.id)
+    setCompanies(remaining)
+    if (selectedCompanyId === company.id) {
+      setSelectedCompanyId(remaining[0]?.id || '')
+      setProperties([])
+    }
+    alert('Company deleted.')
+  }
+
   const toggleAdminAccess = async (admin) => {
     if (!isAdmin || admin.role === 'super_admin' || admin.user_id === userId) return
     const nextActive = admin.is_active === false
@@ -827,14 +988,57 @@ function App() {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
+  const resetFormState = () => {
+    setMedia([])
+    setUploadGroups([])
+    setCopyQuery('')
+    setEditingExistingMedia([])
+  }
+
   const openAddForm = () => {
     setForm(emptyForm)
-    setMedia([])
-    setEditingExistingMedia([])
-    setSpecialFiles({})
+    resetFormState()
     setEditingProperty(false)
     setEditingOriginalId(null)
     setShowForm(true)
+  }
+
+  // New listing pre-filled from an existing one (property number and photos stay empty)
+  const openDuplicateForm = (property) => {
+    setForm({
+      ...emptyForm,
+      sector: property.sector || '',
+      location: property.location || '',
+      type: property.type || '1RK',
+      rent: property.rent || '',
+      caretaker: property.caretaker || '',
+      phone: property.phone || '',
+      map: property.map || '',
+      details: property.details || ''
+    })
+    resetFormState()
+    setEditingProperty(false)
+    setEditingOriginalId(null)
+    setSelectedProperty(null)
+    setSelectedMedia([])
+    setShowForm(true)
+  }
+
+  const copyFromProperty = (value) => {
+    setCopyQuery(value)
+    const source = properties.find(p => `${p.id} · ${p.sector} · ${p.type}` === value)
+    if (!source) return
+    setForm(prev => ({
+      ...prev,
+      sector: source.sector || '',
+      location: source.location || '',
+      type: source.type || '1RK',
+      rent: source.rent || '',
+      caretaker: source.caretaker || '',
+      phone: source.phone || '',
+      map: source.map || '',
+      details: source.details || ''
+    }))
   }
 
   const openEditForm = (property) => {
@@ -851,11 +1055,10 @@ function App() {
       details: property.details || ''
     })
 
+    resetFormState()
     setEditingOriginalId(property.rowId)
     setEditingProperty(true)
     setEditingExistingMedia(property.media_urls || [])
-    setMedia([])
-    setSpecialFiles({})
     setSelectedProperty(null)
     setSelectedMedia([])
     setShowForm(true)
@@ -866,10 +1069,12 @@ function App() {
     setEditingProperty(false)
     setEditingOriginalId(null)
     setForm(emptyForm)
-    setMedia([])
-    setEditingExistingMedia([])
-    setSpecialFiles({})
+    resetFormState()
   }
+
+  const addUploadGroup = (kind) => setUploadGroups(prev => [...prev, { key: `g${Date.now()}${prev.length}`, kind, rooms: '', custom: '', files: [] }])
+  const patchUploadGroup = (key, patch) => setUploadGroups(prev => prev.map(g => g.key === key ? { ...g, ...patch } : g))
+  const removeUploadGroup = (key) => setUploadGroups(prev => prev.filter(g => g.key !== key))
 
   const viewProperty = (property) => {
     setSelectedMedia([])
@@ -891,17 +1096,40 @@ function App() {
     setSaving(true)
 
     try {
-      const uploadedUrls = await Promise.all(media.map(file => uploadToCloudinary(file)))
-
       const existing = editingProperty
         ? properties.find(p => p.rowId === editingOriginalId)
         : null
 
-      const allMediaUrls = [...(editingProperty ? editingExistingMedia : []), ...uploadedUrls]
+      const uploadGroupFiles = (group) => Promise.all(
+        group.files.map(async file => ({ url: await uploadToCloudinary(file), label: fileLabel(file.name) }))
+      )
 
-      const newSpecial = []
+      const [uploadedGeneral, groupResults] = await Promise.all([
+        Promise.all(media.map(file => uploadToCloudinary(file))),
+        Promise.all(uploadGroups.filter(g => g.files.length).map(async group => ({ group, items: await uploadGroupFiles(group) })))
+      ])
 
-      const allSpecialVideos = [...(existing?.special_videos || []), ...newSpecial]
+      // Merge new photos into the folders this property already has (same folder name = same folder)
+      const sections = (existing?.media_sections || []).map(s => ({ ...s, items: [...(s.items || [])] }))
+      for (const { group, items } of groupResults) {
+        const title = folderTitle(group.kind, group.rooms, group.custom)
+        let section = sections.find(s => String(s.title).toLowerCase() === title.toLowerCase())
+        if (!section) {
+          section = { id: `f${Date.now()}${sections.length}`, title, kind: group.kind, items: [] }
+          sections.push(section)
+        }
+        section.items.push(...items)
+      }
+      const order = (s) => { const i = FOLDER_KINDS.indexOf(s.kind); return i === -1 ? 99 : i }
+      sections.sort((a, b) => order(a) - order(b))
+
+      const allMediaUrls = [
+        ...(editingProperty ? editingExistingMedia : []),
+        ...uploadedGeneral,
+        ...groupResults.flatMap(r => r.items.map(i => i.url))
+      ]
+
+      const legacySpecial = existing?.special_videos || []
 
       const propertyData = {
         company_id: activeCompanyId,
@@ -915,13 +1143,14 @@ function App() {
         map_link: form.map,
         details: form.details,
         media_urls: allMediaUrls,
-        special_videos: allSpecialVideos,
+        special_videos: [...legacySpecial, ...sections],
         ...(editingProperty ? {} : { status: 'Available' })
       }
 
       const uiRow = {
         id: newId,
         rowId: existing?.rowId,
+        createdAt: existing?.createdAt || new Date().toISOString(),
         sector: propertyData.sector,
         location: form.location,
         type: form.type,
@@ -931,7 +1160,8 @@ function App() {
         map: form.map,
         details: form.details,
         media_urls: allMediaUrls,
-        special_videos: allSpecialVideos
+        media_sections: sections,
+        special_videos: legacySpecial
       }
 
       if (editingProperty) {
@@ -983,17 +1213,28 @@ function App() {
   }
 
   /* ---------- Gallery management ---------- */
-  const saveGallery = async (property, newUrls) => {
+  // Keeps the folders in sync when files are removed or replaced.
+  const saveGallery = async (property, newUrls, replaced = {}) => {
     if (!isAdmin) return
+
+    const keep = new Set(newUrls)
+    const sections = (property.media_sections || [])
+      .map(s => ({
+        ...s,
+        items: (s.items || [])
+          .map(item => replaced[item.url] ? { ...item, url: replaced[item.url] } : item)
+          .filter(item => keep.has(item.url))
+      }))
+      .filter(s => s.items.length)
 
     const { error } = await supabase
       .from('properties')
-      .update({ media_urls: newUrls })
+      .update({ media_urls: newUrls, special_videos: [...(property.special_videos || []), ...sections] })
       .eq('id', property.rowId)
 
     if (error) throw error
 
-    const updated = { ...property, media_urls: newUrls }
+    const updated = { ...property, media_urls: newUrls, media_sections: sections }
 
     setProperties(prev => prev.map(p => p.rowId === property.rowId ? updated : p))
     setSelectedProperty(updated)
@@ -1025,24 +1266,6 @@ function App() {
     }
   }
 
-  const removeSpecialVideo = async (url) => {
-    if (!isAdmin || !selectedProperty) return
-    if (!window.confirm('Remove this video?')) return
-
-    const newVideos = (selectedProperty.special_videos || []).filter(v => v.url !== url)
-
-    const { error } = await supabase
-      .from('properties')
-      .update({ special_videos: newVideos })
-      .eq('id', selectedProperty.rowId)
-
-    if (error) return alert('Could not remove video: ' + error.message)
-
-    const updated = { ...selectedProperty, special_videos: newVideos }
-    setProperties(prev => prev.map(p => p.rowId === updated.rowId ? updated : p))
-    setSelectedProperty(updated)
-  }
-
   const replaceMedia = async (oldUrl, file) => {
     if (!isAdmin || !file || !selectedProperty) return
     if (!window.confirm('Replace this photo/video?')) return
@@ -1050,7 +1273,7 @@ function App() {
     try {
       const newUrl = await uploadToCloudinary(file)
       const newUrls = selectedProperty.media_urls.map(url => url === oldUrl ? newUrl : url)
-      await saveGallery(selectedProperty, newUrls)
+      await saveGallery(selectedProperty, newUrls, { [oldUrl]: newUrl })
       alert('Media replaced.')
     } catch (error) {
       alert('Replace failed: ' + error.message)
@@ -1066,17 +1289,13 @@ function App() {
       onClose={closeDetails}
       onEdit={openEditForm}
       onDelete={deleteProperty}
-      onPreview={(url) => {
-        const images = properties.flatMap(item => (item.media_urls || []).filter(mediaUrl => !isVideo(mediaUrl)).map(mediaUrl => ({ url: mediaUrl, propertyId: item.id })))
-        const index = Math.max(0, images.findIndex(item => item.url === url))
-        setPreviewMedia({ images, index })
-      }}
+      onDuplicate={openDuplicateForm}
+      onPreview={(images, index) => setPreviewMedia({ images, index: Math.max(0, index) })}
       selectedMedia={selectedMedia}
       setSelectedMedia={setSelectedMedia}
       onRemoveOne={removeOneMedia}
       onRemoveSelected={removeSelectedMedia}
       onReplace={replaceMedia}
-      onRemoveSpecial={removeSpecialVideo}
     />
   )
 
@@ -1117,7 +1336,7 @@ function App() {
 
             <div className="property-section">
               <FilterBar filters={filters} setFilter={setFilter} onReset={resetFilters} sectors={sectors} />
-              <PropertyTable rows={paginatedProperties} onView={viewProperty} publicView />
+              <PropertyTable rows={paginatedProperties} onView={viewProperty} publicView loadingList={listLoading} />
               {pagination}
             </div>
 
@@ -1169,6 +1388,7 @@ function App() {
 
   // Admin app
   const tabs = ['All Properties', 'Company Settings', ...(isSuperAdmin ? ['Manage Companies'] : []), 'Manage Admins']
+  const editingSections = editingProperty ? (properties.find(p => p.rowId === editingOriginalId)?.media_sections || []) : []
 
   return (
     <div className="app" style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#b08d57", "--company-text": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.text_color : companyInfo?.text_color) || "#ffffff" }}>
@@ -1221,7 +1441,7 @@ function App() {
                 <button className="add-button">+ Create Company</button>
               </form>
               <input className="company-search-input" value={companySearch} onChange={e => setCompanySearch(e.target.value)} placeholder="Search company by name or URL slug..." />
-              <div className="table-wrap"><table><thead><tr><th>COMPANY</th><th>STATUS</th><th>PUBLIC LISTING</th><th>OPEN WORKSPACE</th><th>ACTION</th></tr></thead><tbody>{companies.filter(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())).map(c => <tr key={c.id}><td>{c.name}</td><td><span className={`status-badge ${c.is_active === false ? 'status-on-hold' : 'status-available'}`}>{c.is_active === false ? 'On Hold' : 'Active'}</span></td><td>{c.is_active === false ? 'Unavailable while on hold' : <a href={`/?public=1&company=${c.slug}`} target="_blank" rel="noreferrer">Open listing ↗</a>}</td><td><button className="action-link" onClick={() => { setSelectedCompanyId(c.id); setActiveTab('All Properties'); }}>Manage</button></td><td><button className="cancel-button" onClick={() => toggleCompanyAccess(c)}>{c.is_active === false ? 'Restore Company' : 'Hold Company'}</button></td></tr>)}{!companies.some(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())) && <tr><td colSpan="5">No company found.</td></tr>}</tbody></table></div>
+              <div className="table-wrap"><table><thead><tr><th>COMPANY</th><th>STATUS</th><th>PUBLIC LISTING</th><th>OPEN WORKSPACE</th><th>ACTION</th></tr></thead><tbody>{companies.filter(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())).map(c => <tr key={c.id}><td>{c.name}</td><td><span className={`status-badge ${c.is_active === false ? 'status-on-hold' : 'status-available'}`}>{c.is_active === false ? 'On Hold' : 'Active'}</span></td><td>{c.is_active === false ? 'Unavailable while on hold' : <a href={`/?public=1&company=${c.slug}`} target="_blank" rel="noreferrer">Open listing ↗</a>}</td><td><button className="action-link" onClick={() => { setSelectedCompanyId(c.id); setActiveTab('All Properties'); }}>Manage</button></td><td><div className="admin-actions"><button className="cancel-button" onClick={() => toggleCompanyAccess(c)}>{c.is_active === false ? 'Restore Company' : 'Hold Company'}</button><button className="cancel-button danger-button" onClick={() => deleteCompany(c)}>Delete Company</button></div></td></tr>)}{!companies.some(c => `${c.name} ${c.slug}`.toLowerCase().includes(companySearch.toLowerCase())) && <tr><td colSpan="5">No company found.</td></tr>}</tbody></table></div>
             </div>
           ) : activeTab === 'Company Settings' ? (
             <div className="property-section company-settings">
@@ -1304,32 +1524,19 @@ function App() {
                 <div className="stat-card"><span>Total Sectors</span><strong>{sectors.length}</strong></div>
               </div>
 
-              {false ? (
-                <div className="property-section">
-                  <div className="section-heading">
-                    <div><h2>Recently Added</h2><p>Your latest 5 listings.</p></div>
-                    <button className="cancel-button" onClick={() => setActiveTab('All Properties')}>
-                      View all properties
-                    </button>
+              <div className="property-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>Property Directory</h2>
+                    <p>Search by property number or caretaker name.</p>
                   </div>
-
-                  <PropertyTable rows={recentProperties} onView={viewProperty} />
+                  <span className="count">{sorted.length} shown</span>
                 </div>
-              ) : (
-                <div className="property-section">
-                  <div className="section-heading">
-                    <div>
-                      <h2>Property Directory</h2>
-                      <p>Search by property number or caretaker name.</p>
-                    </div>
-                    <span className="count">{sorted.length} shown</span>
-                  </div>
 
-                  <FilterBar filters={filters} setFilter={setFilter} onReset={resetFilters} sectors={sectors} />
-                  <PropertyTable rows={paginatedProperties} onView={viewProperty} />
-                  {pagination}
-                </div>
-              )}
+                <FilterBar filters={filters} setFilter={setFilter} onReset={resetFilters} sectors={sectors} />
+                <PropertyTable rows={paginatedProperties} onView={viewProperty} onDuplicate={openDuplicateForm} loadingList={listLoading} />
+                {pagination}
+              </div>
             </>
           )}
           <footer className="app-footer">Contact Harsheet · <a href="tel:7717463674">7717463674</a></footer>
@@ -1346,6 +1553,23 @@ function App() {
               </div>
               <button type="button" className="close-button" onClick={closeForm}>×</button>
             </div>
+
+            {!editingProperty && properties.length > 0 && (
+              <div className="copy-from">
+                <label>Copy details from an existing property
+                  <input
+                    list="copy-from-list"
+                    value={copyQuery}
+                    onChange={e => copyFromProperty(e.target.value)}
+                    placeholder="Type or pick a property number…"
+                  />
+                </label>
+                <datalist id="copy-from-list">
+                  {properties.map(p => <option key={p.rowId} value={`${p.id} · ${p.sector} · ${p.type}`} />)}
+                </datalist>
+                <small>Fills sector, location, type, rent, caretaker, phone, map and details. Property number and photos stay empty.</small>
+              </div>
+            )}
 
             <div className="form-grid">
               <label>Property Number *
@@ -1377,7 +1601,41 @@ function App() {
               <label className="full-field">Special Details
                 <textarea name="details" value={form.details} onChange={updateForm} rows="3" />
               </label>
-              <label className="full-field">Add Photos & Videos
+
+              <div className="full-field folder-uploads">
+                <strong>Photo Folders</strong>
+                <small>Add Ground Floor, Basement or a group of similar rooms (e.g. Rooms 1, 4, 7). Viewers see each as a folder. A file named like "Room 4.jpg" or "4.jpg" shows as "Room 4".</small>
+
+                {editingSections.length > 0 && (
+                  <small className="folder-existing">Existing folders: {editingSections.map(s => `${s.title} (${s.items.length})`).join(' · ')}. Use the same folder name to add more photos to it.</small>
+                )}
+
+                {uploadGroups.map(group => (
+                  <div className="folder-upload-row" key={group.key}>
+                    <select value={group.kind} onChange={e => patchUploadGroup(group.key, { kind: e.target.value })}>
+                      {FOLDER_KINDS.map(k => <option key={k} value={k}>{k === 'Rooms' ? 'Rooms (same type)' : k}</option>)}
+                    </select>
+                    {group.kind === 'Rooms' && (
+                      <input placeholder="Room numbers, e.g. 1, 4, 7" value={group.rooms} onChange={e => patchUploadGroup(group.key, { rooms: e.target.value })} />
+                    )}
+                    {group.kind === 'Other' && (
+                      <input placeholder="Folder name" value={group.custom} onChange={e => patchUploadGroup(group.key, { custom: e.target.value })} />
+                    )}
+                    <input type="file" accept="image/*,video/*" multiple onChange={e => patchUploadGroup(group.key, { files: Array.from(e.target.files || []) })} />
+                    <span className="folder-file-count">{group.files.length} file(s)</span>
+                    <button type="button" className="cancel-button" onClick={() => removeUploadGroup(group.key)}>Remove</button>
+                  </div>
+                ))}
+
+                <div className="folder-quick-add">
+                  <button type="button" className="cancel-button" onClick={() => addUploadGroup('Ground Floor')}>+ Ground Floor</button>
+                  <button type="button" className="cancel-button" onClick={() => addUploadGroup('Basement')}>+ Basement</button>
+                  <button type="button" className="cancel-button" onClick={() => addUploadGroup('Rooms')}>+ Rooms Group</button>
+                  <button type="button" className="cancel-button" onClick={() => addUploadGroup('Other')}>+ Other Folder</button>
+                </div>
+              </div>
+
+              <label className="full-field">Other Photos & Videos (no folder)
                 <input
                   type="file"
                   accept="image/*,video/*"

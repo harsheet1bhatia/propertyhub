@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap');
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -831,4 +830,61 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .app .public-property-card-title > strong { font-size: 14px; }
   .app .details-modal { padding: 15px 12px; }
   .app .gallery-heading .add-button { font-size: 9px; padding: 9px; }
+}
+
+
+/* ================================================================
+   PROPERTYHUB — v3 ADDITIONS  (paste at the very BOTTOM of App.css)
+   Photo folders, share/download bar, duplicate/copy, delete company
+   ================================================================ */
+
+/* ---------- Photo folders (viewer) ---------- */
+.app .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; margin-top: 8px; }
+.app .folder-card { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 0 0 14px; border: 1px solid #e7dcc6; border-radius: 18px; background: #faf5ea; cursor: pointer; overflow: hidden; transition: transform .3s var(--ease), box-shadow .3s var(--ease), border-color .3s var(--ease); }
+.app .folder-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: var(--acc-line); }
+.app .folder-cover { position: relative; display: block; width: 100%; height: 140px; background: var(--panel); overflow: hidden; }
+.app .folder-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .7s var(--ease); }
+.app .folder-card:hover .folder-cover img { transform: scale(1.06); }
+.app .folder-cover b { position: absolute; right: 10px; bottom: 10px; background: rgba(16, 12, 6, .72); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 999px; }
+.app .folder-icon { display: grid; place-items: center; width: 100%; height: 100%; font-size: 34px; }
+.app .folder-name { padding: 6px 14px 0; font-weight: 700; font-size: 16px; color: var(--ink); }
+.app .folder-card small { padding: 0 14px; color: var(--muted); font-size: 12.5px; }
+
+/* ---------- Share / Download bar ---------- */
+.app .gallery-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--body); }
+.app .gallery-actions .add-button, .app .gallery-actions .cancel-button { padding: 11px 16px; font-size: 12px; }
+.app .gallery-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.app .gallery-item.is-selected { outline: 3px solid var(--acc); outline-offset: -3px; }
+.app .media-caption { margin: 8px 12px 0; font-size: 13px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+
+/* ---------- Admin: folder upload block ---------- */
+.app .folder-uploads { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1.5px dashed var(--line-strong); border-radius: 16px; background: #faf5ea; }
+.app .folder-uploads > strong { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #3f392f; }
+.app .folder-upload-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.app .folder-upload-row select { flex: 0 1 190px; min-width: 150px; }
+.app .folder-upload-row input[type="text"], .app .folder-upload-row input:not([type]) { flex: 1 1 180px; min-width: 150px; }
+.app .folder-upload-row input[type="file"] { flex: 1 1 220px; min-width: 0; padding: 10px; font-size: 13px; }
+.app .folder-file-count { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.app .folder-quick-add { display: flex; flex-wrap: wrap; gap: 8px; }
+.app .folder-quick-add .cancel-button { padding: 10px 14px; font-size: 12px; }
+.app .folder-existing { color: var(--acc-deep) !important; font-weight: 600 !important; }
+
+/* ---------- Admin: copy-from + row actions + delete company ---------- */
+.app .copy-from { display: flex; flex-direction: column; gap: 8px; margin-bottom: 22px; padding: 16px; border: 1.5px solid var(--acc-line); border-radius: 16px; background: var(--acc-soft); }
+.app .copy-from label { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #3f392f; }
+.app .copy-from small { font-size: 12.5px; color: var(--muted); }
+.app .row-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.app .danger-button { color: #b42318; border-color: #efc4be; }
+.app .danger-button:hover:not(:disabled) { background: #fbe7e4 !important; border-color: #b42318 !important; }
+
+@media (max-width: 700px) {
+  .app .folder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .app .folder-cover { height: 105px; }
+  .app .folder-name { font-size: 14px; padding: 4px 10px 0; }
+  .app .folder-card small { padding: 0 10px; font-size: 11px; }
+  .app .gallery-actions { gap: 8px; }
+  .app .gallery-actions .add-button, .app .gallery-actions .cancel-button { flex: 1 1 44%; padding: 10px 10px; font-size: 10.5px; }
+  .app .media-caption { font-size: 11px; margin: 6px 9px 0; }
+  .app .folder-uploads { padding: 12px; }
+  .app .folder-upload-row select, .app .folder-upload-row input { flex-basis: 100%; }
 }
