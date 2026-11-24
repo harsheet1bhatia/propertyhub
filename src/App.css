@@ -1016,11 +1016,46 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 @media(max-width:700px){ .app .public-client-share-toolbar { align-items:stretch; } .app .public-client-share-toolbar .client-share-button { width:100%; } }
 
 
-/* Broker display name used on client share pages */
-.app .public-client-share-toolbar { display:flex; align-items:flex-end; justify-content:flex-end; gap:14px; flex-wrap:wrap; margin:0 0 18px; }
-.app .broker-share-name-field { display:flex; flex-direction:column; gap:6px; min-width:min(260px,100%); }
-.app .broker-share-name-field label { color:#52645a; font-size:12px; font-weight:700; }
-.app .broker-share-name-field input { width:100%; min-height:42px; padding:10px 12px; border:1px solid #d7e1d9; border-radius:10px; background:#fff; color:#203328; font:inherit; outline:none; box-sizing:border-box; }
-.app .broker-share-name-field input:focus { border-color:#176b42; box-shadow:0 0 0 3px rgba(23,107,66,.10); }
-.client-share-heading h1 { margin:0; }
-@media (max-width:600px) { .app .public-client-share-toolbar { align-items:stretch; } .app .broker-share-name-field { width:100%; } .app .public-client-share-toolbar .client-share-all-button { width:100%; } }
+/* Broker name field is visible in the top-right of the public viewer header. */
+.app .public-company-header { align-items:center; }
+.app .public-header-actions { display:flex !important; align-items:flex-end; justify-content:flex-end; gap:12px; flex-wrap:wrap; width:auto; }
+.app .public-header-actions .broker-share-name-field { display:flex; flex-direction:column; gap:5px; min-width:220px; }
+.app .public-header-actions .broker-share-name-field label { display:block; color:#52645a; font-size:12px; font-weight:700; }
+.app .public-header-actions .broker-share-name-field input { display:block; width:220px; max-width:100%; min-height:42px; padding:10px 12px; border:1px solid #d7e1d9; border-radius:10px; background:#fff; color:#203328; font:inherit; box-sizing:border-box; }
+.app .public-header-actions .broker-share-name-field input:focus { border-color:#176b42; outline:none; box-shadow:0 0 0 3px rgba(23,107,66,.10); }
+@media(max-width:700px) { .app .public-header-actions { width:100%; justify-content:stretch; align-items:stretch; } .app .public-header-actions .broker-share-name-field, .app .public-header-actions .broker-share-name-field input, .app .public-header-actions .client-share-all-button { width:100%; } }
+
+/* Client links use the same property collage -> folder -> media browsing flow as the broker viewer. */
+.client-share-property-card { overflow: hidden; }
+.client-share-collage { width: 100%; min-height: 190px; max-height: 230px; padding: 0; border: 0; border-radius: 14px; overflow: hidden; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-rows: repeat(2,minmax(90px,1fr)); gap: 3px; background: #edf1ed; cursor: pointer; }
+.client-share-collage .collage-photo { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.client-share-collage .collage-photo:first-child:nth-last-child(1) { grid-column: 1 / -1; grid-row: 1 / -1; }
+.client-share-collage .collage-photo img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.client-share-collage .collage-photo b { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: rgba(0,0,0,.48); font-size: 22px; }
+.client-share-video-cover { grid-column: 1 / -1; grid-row: 1 / -1; display: grid; place-items: center; color: #fff; background: #26382e; font-weight: 700; }
+.client-share-open-button { width: 100%; margin-top: 12px; padding: 11px 14px; border: 1px solid #d8e2da; border-radius: 10px; background: #f5f8f5; color: #176b42; font-weight: 700; cursor: pointer; }
+.client-share-pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 22px 0; flex-wrap: wrap; }
+.client-share-pagination button, .client-share-modal-subhead button { padding: 9px 13px; border: 1px solid #d9e2db; border-radius: 9px; background: #fff; color: #176b42; font-weight: 700; cursor: pointer; }
+.client-share-pagination button:disabled { opacity: .4; cursor: not-allowed; }
+.client-share-pagination span { color: #64736a; font-size: 13px; }
+.client-share-modal-overlay { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(15,25,19,.68); }
+.client-share-modal { width: min(920px,100%); max-height: min(90vh,900px); overflow: auto; padding: 22px; border-radius: 18px; background: #fff; box-shadow: 0 24px 80px rgba(0,0,0,.28); }
+.client-share-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #e7ece8; }
+.client-share-modal-header span, .client-share-card-heading span { color: #718078; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+.client-share-modal-header h2 { margin: 4px 0; color: #203328; }
+.client-share-modal-header strong { color: #176b42; font-size: 18px; }
+.client-share-modal-header strong small { color: #849088; font-size: 11px; font-weight: 500; }
+.client-share-modal-header > button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: #f0f3f0; color: #35483c; font-size: 25px; cursor: pointer; }
+.client-share-modal-subhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 14px; }
+.client-share-modal-subhead h3 { margin: 0; color: #24372b; }
+.client-share-modal-subhead p { margin: 4px 0 0; color: #77847c; font-size: 12px; }
+.client-share-media-view { display: grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap: 12px; }
+.client-share-media-item { min-width: 0; overflow: hidden; border-radius: 12px; background: #f2f5f2; }
+.client-share-media-item img, .client-share-media-item video { display: block; width: 100%; max-height: 360px; aspect-ratio: 4 / 3; object-fit: contain; background: #101713; }
+.client-share-media-item small { display: block; padding: 7px 9px; color: #59685f; }
+@media(max-width:600px) {
+  .client-share-collage { min-height: 155px; grid-template-rows: repeat(2,minmax(75px,1fr)); }
+  .client-share-modal-overlay { padding: 8px; }
+  .client-share-modal { max-height: 94vh; padding: 15px; border-radius: 14px; }
+  .client-share-media-view { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+}

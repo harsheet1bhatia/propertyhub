@@ -346,6 +346,58 @@ function PropertyTable({ rows, onView, onEdit, onDuplicate, onShareClient, publi
   )
 }
 
+
+function ClientShareCollection({ properties }) {
+  const [selectedProperty, setSelectedProperty] = useState(null)
+  const [openFolder, setOpenFolder] = useState(null)
+  const [page, setPage] = useState(1)
+  const pageSize = 30
+  const totalPages = Math.max(1, Math.ceil(properties.length / pageSize))
+  const visibleProperties = properties.slice((page - 1) * pageSize, page * pageSize)
+  const folders = selectedProperty ? getFolders(selectedProperty) : []
+  const activeFolder = folders.find(folder => folder.id === openFolder) || null
+  const showFolderOverview = folders.length > 1 && !activeFolder
+  const visibleMedia = activeFolder ? activeFolder.items : folders.flatMap(folder => folder.items)
+
+  const openProperty = property => { setSelectedProperty(property); setOpenFolder(null) }
+  const closeProperty = () => { setSelectedProperty(null); setOpenFolder(null) }
+
+  return (
+    <>
+      <div className="client-share-grid">
+        {visibleProperties.map((property, index) => {
+          const media = Array.isArray(property.media_urls) ? property.media_urls : []
+          const previews = media.filter(url => !isVideo(url)).slice(0, 4)
+          return (
+            <article className="client-share-card client-share-property-card" key={`${property.sector || 'sector'}-${index}`}>
+              <button type="button" className={`client-share-collage collage-count-${previews.length}`} onClick={() => openProperty(property)} aria-label={`View ${property.sector || 'property'} photos and videos`}>
+                {previews.length ? previews.map((url, mediaIndex) => <span className="collage-photo" key={`${url}-${mediaIndex}`}><img src={thumb(url, 500)} alt="Property preview" loading="lazy" />{mediaIndex === 3 && media.filter(item => !isVideo(item)).length > 4 && <b>+{media.filter(item => !isVideo(item)).length - 4}</b>}</span>) : media.length ? <span className="client-share-video-cover">▶ Video available</span> : <span className="client-share-no-media">No photos or videos</span>}
+              </button>
+              <div className="client-share-card-heading"><div><span>SECTOR</span><h2>{property.sector || 'Not specified'}</h2></div><strong>{formatRent(property.rent)}<small>/ month</small></strong></div>
+              <button type="button" className="client-share-open-button" onClick={() => openProperty(property)}>View Photos &amp; Videos</button>
+            </article>
+          )
+        })}
+      </div>
+      {totalPages > 1 && <div className="client-share-pagination"><button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>← Previous</button><span>Page {page} of {totalPages} · {properties.length} properties</span><button type="button" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next →</button></div>}
+
+      {selectedProperty && (
+        <div className="client-share-modal-overlay" onClick={closeProperty}>
+          <section className="client-share-modal" onClick={event => event.stopPropagation()}>
+            <header className="client-share-modal-header"><div><span>SECTOR</span><h2>{selectedProperty.sector || 'Not specified'}</h2><strong>{formatRent(selectedProperty.rent)}<small> / month</small></strong></div><button type="button" onClick={closeProperty} aria-label="Close">×</button></header>
+            <div className="client-share-modal-subhead"><div><h3>{activeFolder && folders.length > 1 ? activeFolder.title : 'Photos & Videos'}</h3><p>{activeFolder ? `${activeFolder.items.length} files` : `${visibleMedia.length} files in ${folders.length} folders`}</p></div>{activeFolder && folders.length > 1 && <button type="button" onClick={() => setOpenFolder(null)}>← All folders</button>}</div>
+            {showFolderOverview ? (
+              <div className="folder-grid">{folders.map(folder => { const cover = folder.items.find(item => !isVideo(item.url)); return <button key={folder.id} className="folder-card" onClick={() => setOpenFolder(folder.id)}><span className="folder-cover">{cover ? <img src={thumb(cover.url, 420)} alt={folder.title} loading="lazy" /> : <span className="folder-icon">🎬</span>}<b>{folder.items.length}</b></span><span className="folder-name">{folder.title}</span><small>{folder.items.length} files</small></button> })}</div>
+            ) : (
+              <div className="client-share-media-view">{visibleMedia.map((item, index) => <div className="client-share-media-item" key={`${item.url}-${index}`}>{isVideo(item.url) ? <video src={item.url} controls playsInline preload="metadata" /> : <img src={thumb(item.url, 900)} alt={`Property photo ${index + 1}`} loading="lazy" />}{item.label && <small>{item.label}</small>}</div>)}{!visibleMedia.length && <p className="client-share-no-media">Photos and videos are not available.</p>}</div>
+            )}
+          </section>
+        </div>
+      )}
+    </>
+  )
+}
+
 function DetailsModal({
   property, isAdmin, onClose, onEdit, onDelete, onDuplicate, onPreview,
   selectedMedia, setSelectedMedia, onRemoveOne, onRemoveSelected, onReplace
@@ -772,15 +824,15 @@ function App() {
   const [loading, setLoading] = useState(!isPublic || isClientShare)
   const [listLoading, setListLoading] = useState(true)
   const [email, setEmail] = useState('')
+  const [brokerDisplayName, setBrokerDisplayName] = useState(() => {
+    try { return window.localStorage.getItem('propertyhub_broker_display_name') || '' } catch { return '' }
+  })
 
   // Data
   const [properties, setProperties] = useState([])
   const [propertyTours, setPropertyTours] = useState([])
   const [clientShareProperties, setClientShareProperties] = useState([])
   const [clientShareError, setClientShareError] = useState('')
-  const [brokerDisplayName, setBrokerDisplayName] = useState(() => {
-    try { return window.localStorage.getItem('propertyhub_broker_display_name') || '' } catch { return '' }
-  })
   const [tourUploading, setTourUploading] = useState(false)
   const [admins, setAdmins] = useState([])
   const [adminEmail, setAdminEmail] = useState('')
@@ -1598,23 +1650,7 @@ function App() {
     return (
       <div className="client-share-page">
         <main className="client-share-content">
-          <div className="client-share-heading"><h1>{clientShareProperties.length === 1 ? 'Property by' : 'Properties by'} {clientShareProperties[0]?.broker_name || 'Broker'}</h1></div>
-          {loading ? <p className="client-share-message">Loading properties…</p> : clientShareError ? <p className="client-share-message">{clientShareError}</p> : (
-            <div className="client-share-grid">
-              {clientShareProperties.map((property, index) => {
-                const mediaItems = Array.isArray(property.media_urls) ? property.media_urls : []
-                return (
-                  <article className="client-share-card" key={`${property.sector || 'sector'}-${index}`}>
-                    <div className="client-share-card-heading"><div><span>SECTOR</span><h2>{property.sector || 'Not specified'}</h2></div><strong>{formatRent(property.rent)}<small>/ month</small></strong></div>
-                    {mediaItems.length ? <div className="client-share-media-grid">{mediaItems.map((url, mediaIndex) => isVideo(url)
-                      ? <video key={`${url}-${mediaIndex}`} src={url} controls playsInline preload="metadata" />
-                      : <img key={`${url}-${mediaIndex}`} src={thumb(url, 900)} alt={`Property photo ${mediaIndex + 1}`} loading="lazy" />
-                    )}</div> : <p className="client-share-no-media">Photos and videos are not available.</p>}
-                  </article>
-                )
-              })}
-            </div>
-          )}
+          {loading ? <p className="client-share-message">Loading properties…</p> : clientShareError ? <p className="client-share-message">{clientShareError}</p> : <ClientShareCollection properties={clientShareProperties} />}
         </main>
       </div>
     )
@@ -1630,20 +1666,22 @@ function App() {
         </aside>
         <main className="main" style={{ width: '100%' }}>
           <section className="content">
-            <div className="public-client-share-toolbar">
-              <div className="broker-share-name-field"><label htmlFor="broker-display-name">Your Name</label><input id="broker-display-name" type="text" value={brokerDisplayName} onChange={e => setBrokerDisplayName(e.target.value)} placeholder="Enter your name" maxLength={60} /></div>
-              <button type="button" className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button>
-            </div>
             {activeTab === 'Property Tours' ? <>
               <div className="public-company-header">
                 <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
-                <span className="count">{properties.length} properties · {propertyTours.length} property tours</span>
+                <div className="public-header-actions"><div className="broker-share-name-field"><label htmlFor="broker-display-name">Your Name (shown to clients)</label><input id="broker-display-name" type="text" value={brokerDisplayName} onChange={e => { const value = e.target.value; setBrokerDisplayName(value); try { window.localStorage.setItem('propertyhub_broker_display_name', value) } catch {} }} placeholder="Enter your name" maxLength={60} /></div>
+                <button type="button" className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button>
+                  <span className="count">{properties.length} properties · {propertyTours.length} property tours</span>
+                </div>
               </div>
               <PropertyToursPanel tours={propertyTours} isAdmin={false} />
             </> : <>
             <div className="public-company-header">
               <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
-              <div className="public-header-actions"><span className="count">{properties.length} properties</span></div>
+              <div className="public-header-actions"><div className="broker-share-name-field"><label htmlFor="broker-display-name">Your Name (shown to clients)</label><input id="broker-display-name" type="text" value={brokerDisplayName} onChange={e => { const value = e.target.value; setBrokerDisplayName(value); try { window.localStorage.setItem('propertyhub_broker_display_name', value) } catch {} }} placeholder="Enter your name" maxLength={60} /></div>
+                <button type="button" className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button>
+                <span className="count">{properties.length} properties</span>
+              </div>
             </div>
 
             <div className="property-section">
