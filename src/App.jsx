@@ -698,7 +698,7 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
           {isAdmin && <button className="tour-delete-button" type="button" onClick={() => onDelete(tour)}>Delete Tour</button>}
         </article>)}
       </div> : <div className="tour-empty-state">No property tours uploaded yet.</div>}
-      <p className="tour-download-note">Videos can be downloaded or shared one at a time.</p>
+      <p className="tour-download-note">Videos can be downloaded or shared one at a time. Bulk download is not available.</p>
     </div>
   )
 }
@@ -817,7 +817,7 @@ function App() {
         const [companyRes, propertiesRes, toursRes] = await Promise.all([
           supabase.rpc('get_public_company_by_slug', { company_slug: companySlug }),
           supabase.rpc('get_public_company_properties', { company_slug: companySlug }),
-          supabase.rpc('get_public_company_tours', { company_slug: companySlug })
+          supabase.rpc('get_public_company_tours', { p_company_slug: companySlug })
         ])
         if (!active) return
         if (companyRes.error || !companyRes.data) { console.error(companyRes.error); setProperties([]); setLoading(false); setListLoading(false); return }
@@ -1492,7 +1492,6 @@ function App() {
     return (
       <div className="app public-viewer-app" style={{ "--company-accent": companyInfo?.theme_color || "#b08d57", "--company-text": companyInfo?.text_color || "#ffffff" }}>
         <aside className="sidebar public-viewer-sidebar">
-          <div className="brand"><div className="brand-icon">P</div><span>Property<span className="green">Hub</span></span></div>
           <p className="menu-label">VIEWER</p>
           {['All Properties', 'Property Tours'].map(item => <button key={item} className={`nav-item ${activeTab === item ? 'active' : ''}`} onClick={() => setActiveTab(item)}>{item}</button>)}
         </aside>
