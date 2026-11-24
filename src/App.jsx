@@ -698,7 +698,7 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
           {isAdmin && <button className="tour-delete-button" type="button" onClick={() => onDelete(tour)}>Delete Tour</button>}
         </article>)}
       </div> : <div className="tour-empty-state">No property tours uploaded yet.</div>}
-      <p className="tour-download-note">Videos can be downloaded or shared one at a time. Bulk download is not available.</p>
+      <p className="tour-download-note">Videos can be downloaded or shared one at a time.</p>
     </div>
   )
 }
