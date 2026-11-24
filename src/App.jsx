@@ -16,7 +16,7 @@ const emptyForm = {
 }
 
 const emptyFilters = {
-  search: '', type: 'All', sector: 'All', sort: 'default'
+  search: '', type: 'All', sector: 'All', sort: 'sector'
 }
 
 const params = new URLSearchParams(window.location.search)
@@ -216,7 +216,6 @@ function FilterBar({ filters, setFilter, onReset, sectors }) {
       </select>
 
       <select value={filters.sort} onChange={e => setFilter('sort', e.target.value)}>
-        <option value="default">Newest First</option>
         <option value="sector">Sector (A-Z)</option>
         <option value="rent-low">Rent: Low to High</option>
         <option value="rent-high">Rent: High to Low</option>
@@ -258,7 +257,7 @@ function Pagination({ currentPage, totalPages, setCurrentPage, itemsPerPage, set
   )
 }
 
-function PropertyTable({ rows, onView, onDuplicate, publicView, loadingList }) {
+function PropertyTable({ rows, onView, onEdit, onDuplicate, publicView, loadingList }) {
   const emptyText = loadingList ? 'Loading properties…' : 'No properties found.'
   if (publicView) {
     return (
@@ -303,11 +302,13 @@ function PropertyTable({ rows, onView, onDuplicate, publicView, loadingList }) {
         <tbody>
           {rows.map(property => (
             <tr key={property.rowId || `${property.id}-${property.sector}-${property.location}`}>
-              <td>{property.sector}</td><td><strong>#{property.id}</strong></td><td>{property.location || 'Not added'}</td><td>{property.type}</td><td>{formatRent(property.rent)}</td><td>{property.caretaker || 'Not added'}</td>
+              <td>{property.sector}</td><td>{onEdit ? <button className="action-link" onClick={() => onView(property)}><strong>#{property.id}</strong></button> : <strong>#{property.id}</strong>}</td><td>{property.location || 'Not added'}</td><td>{property.type}</td><td>{formatRent(property.rent)}</td><td>{property.caretaker || 'Not added'}</td>
               <td>{property.phone ? <a href={phoneHref(property.phone)}>{property.phone}</a> : 'Not added'}</td>
               <td>
                 <div className="row-actions">
-                  <button className="action-link" onClick={() => onView(property)}>View</button>
+                  {onEdit
+                    ? <button className="action-link" onClick={() => onEdit(property)}>Edit</button>
+                    : <button className="action-link" onClick={() => onView(property)}>View</button>}
                   {onDuplicate && <button className="action-link" onClick={() => onDuplicate(property)}>Duplicate</button>}
                 </div>
               </td>
@@ -1110,7 +1111,10 @@ function App() {
       ])
 
       // Merge new photos into the folders this property already has (same folder name = same folder)
-      const sections = (existing?.media_sections || []).map(s => ({ ...s, items: [...(s.items || [])] }))
+      const keepUrls = new Set(editingExistingMedia)
+      const sections = (existing?.media_sections || [])
+        .map(s => ({ ...s, items: (s.items || []).filter(item => keepUrls.has(item.url)) }))
+        .filter(s => s.items.length)
       for (const { group, items } of groupResults) {
         const title = folderTitle(group.kind, group.rooms, group.custom)
         let section = sections.find(s => String(s.title).toLowerCase() === title.toLowerCase())
@@ -1209,6 +1213,7 @@ function App() {
 
     setProperties(prev => prev.filter(p => p.rowId !== property.rowId))
     closeDetails()
+    if (editingOriginalId === property.rowId) closeForm()
     alert('Property deleted.')
   }
 
@@ -1388,7 +1393,11 @@ function App() {
 
   // Admin app
   const tabs = ['All Properties', 'Company Settings', ...(isSuperAdmin ? ['Manage Companies'] : []), 'Manage Admins']
-  const editingSections = editingProperty ? (properties.find(p => p.rowId === editingOriginalId)?.media_sections || []) : []
+  const editingFolders = editingProperty
+    ? getFolders({ media_urls: editingExistingMedia, media_sections: properties.find(p => p.rowId === editingOriginalId)?.media_sections || [] })
+    : []
+  const pendingCount = media.length + uploadGroups.reduce((sum, g) => sum + g.files.length, 0)
+  const removeExistingMedia = (url) => setEditingExistingMedia(prev => prev.filter(u => u !== url))
 
   return (
     <div className="app" style={{ "--company-accent": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.theme_color : companyInfo?.theme_color) || "#b08d57", "--company-text": (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.text_color : companyInfo?.text_color) || "#ffffff" }}>
@@ -1534,7 +1543,7 @@ function App() {
                 </div>
 
                 <FilterBar filters={filters} setFilter={setFilter} onReset={resetFilters} sectors={sectors} />
-                <PropertyTable rows={paginatedProperties} onView={viewProperty} onDuplicate={openDuplicateForm} loadingList={listLoading} />
+                <PropertyTable rows={paginatedProperties} onView={viewProperty} onEdit={openEditForm} onDuplicate={openDuplicateForm} loadingList={listLoading} />
                 {pagination}
               </div>
             </>
@@ -1602,12 +1611,40 @@ function App() {
                 <textarea name="details" value={form.details} onChange={updateForm} rows="3" />
               </label>
 
+              {editingProperty && (
+                <div className="full-field upload-status">
+                  <strong>Photo Status</strong>
+                  <div className="upload-status-counts">
+                    <span className="badge-done">✓ Uploaded: {editingExistingMedia.length}</span>
+                    <span className="badge-pending">⏳ Pending upload: {pendingCount}</span>
+                  </div>
+                  {editingFolders.length === 0 && <small>No photos uploaded yet.</small>}
+                  {editingFolders.map(folder => (
+                    <div className="uploaded-folder" key={folder.id}>
+                      <div className="uploaded-folder-title">{folder.title} <span>({folder.items.length})</span></div>
+                      <div className="uploaded-thumbs">
+                        {folder.items.map(item => (
+                          <div className="uploaded-thumb" key={item.url}>
+                            {isVideo(item.url)
+                              ? <span className="uploaded-video">🎬</span>
+                              : <img src={thumb(item.url, 160)} alt={item.label || 'Uploaded photo'} loading="lazy" decoding="async" />}
+                            {item.label && <small>{item.label}</small>}
+                            <button type="button" aria-label="Remove file" onClick={() => removeExistingMedia(item.url)}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {editingFolders.length > 0 && <small>Removing a file here takes effect when you press Update Property.</small>}
+                </div>
+              )}
+
               <div className="full-field folder-uploads">
                 <strong>Photo Folders</strong>
                 <small>Add Ground Floor, Basement or a group of similar rooms (e.g. Rooms 1, 4, 7). Viewers see each as a folder. A file named like "Room 4.jpg" or "4.jpg" shows as "Room 4".</small>
 
-                {editingSections.length > 0 && (
-                  <small className="folder-existing">Existing folders: {editingSections.map(s => `${s.title} (${s.items.length})`).join(' · ')}. Use the same folder name to add more photos to it.</small>
+                {editingFolders.length > 0 && (
+                  <small className="folder-existing">Use the same folder name as an uploaded folder to add more photos to it.</small>
                 )}
 
                 {uploadGroups.map(group => (
@@ -1624,6 +1661,11 @@ function App() {
                     <input type="file" accept="image/*,video/*" multiple onChange={e => patchUploadGroup(group.key, { files: Array.from(e.target.files || []) })} />
                     <span className="folder-file-count">{group.files.length} file(s)</span>
                     <button type="button" className="cancel-button" onClick={() => removeUploadGroup(group.key)}>Remove</button>
+                    {group.files.length > 0 && (
+                      <div className="pending-files">
+                        {group.files.map((file, i) => <span key={`${file.name}-${i}`}>⏳ {file.name}{fileLabel(file.name) ? ` → ${fileLabel(file.name)}` : ''}</span>)}
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -1643,10 +1685,25 @@ function App() {
                   onChange={e => setMedia(Array.from(e.target.files || []))}
                 />
                 <small>{media.length} new file(s) selected.</small>
+                {media.length > 0 && (
+                  <div className="pending-files">
+                    {media.map((file, i) => <span key={`${file.name}-${i}`}>⏳ {file.name}</span>)}
+                  </div>
+                )}
               </label>
             </div>
 
             <div className="form-actions">
+              {editingProperty && (
+                <button
+                  type="button"
+                  className="cancel-button danger-button"
+                  disabled={saving}
+                  onClick={() => { const p = properties.find(x => x.rowId === editingOriginalId); if (p) deleteProperty(p) }}
+                >
+                  Delete Property
+                </button>
+              )}
               <button type="button" className="cancel-button" onClick={closeForm} disabled={saving}>Cancel</button>
               <button type="submit" className="add-button" disabled={saving}>
                 {saving ? 'Uploading & Saving...' : editingProperty ? 'Update Property' : 'Save Property'}

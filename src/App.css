@@ -888,3 +888,26 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .app .folder-uploads { padding: 12px; }
   .app .folder-upload-row select, .app .folder-upload-row input { flex-basis: 100%; }
 }
+
+
+/* ================================================================
+   v4 ADDITIONS — paste at the very BOTTOM of App.css
+   Edit form: uploaded vs pending photos
+   ================================================================ */
+.app .upload-status { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1.5px solid var(--line-strong); border-radius: 16px; background: #faf5ea; }
+.app .upload-status > strong { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #3f392f; }
+.app .upload-status-counts { display: flex; flex-wrap: wrap; gap: 10px; }
+.app .badge-done, .app .badge-pending { padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.app .badge-done { background: #e6f3e9; color: #1f6b3a; border: 1px solid #bfdcc6; }
+.app .badge-pending { background: #fcefd6; color: #8a5a0c; border: 1px solid #ecd29b; }
+.app .uploaded-folder-title { font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.app .uploaded-folder-title span { color: var(--muted); font-weight: 500; }
+.app .uploaded-thumbs { display: flex; flex-wrap: wrap; gap: 10px; }
+.app .uploaded-thumb { position: relative; width: 88px; display: flex; flex-direction: column; gap: 4px; }
+.app .uploaded-thumb img, .app .uploaded-video { width: 88px; height: 72px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center; font-size: 24px; }
+.app .uploaded-thumb small { font-size: 11px; line-height: 1.2; color: var(--body); overflow-wrap: anywhere; text-transform: none; letter-spacing: 0; }
+.app .uploaded-thumb button { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(16, 12, 6, .75); color: #fff; font-size: 15px; line-height: 1; cursor: pointer; }
+.app .uploaded-thumb button:hover { background: #b42318; }
+.app .pending-files { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.app .pending-files span { padding: 4px 10px; border-radius: 999px; background: #fcefd6; color: #8a5a0c; border: 1px solid #ecd29b; font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
+.app .form-actions .danger-button { margin-right: auto; }
