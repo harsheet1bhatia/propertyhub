@@ -623,6 +623,86 @@ function ImagePreview({ images, initialIndex = 0, onClose }) {
   )
 }
 
+function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
+  const [propertyNumber, setPropertyNumber] = useState('')
+  const [sector, setSector] = useState('')
+  const [files, setFiles] = useState([])
+  const [busyShare, setBusyShare] = useState('')
+
+  const downloadOne = async (url, propertyNumber, index) => {
+    try {
+      const response = await fetch(url, { mode: 'cors' })
+      if (!response.ok) throw new Error('Download unavailable')
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = `Property-${safeName(propertyNumber)}-Tour-${index + 1}.mp4`
+      document.body.appendChild(link); link.click(); link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000)
+    } catch (error) {
+      alert('Could not download this video directly. Opening it so you can save it from the video menu.')
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  const shareOne = async (url, title) => {
+    try {
+      if (navigator.share) await navigator.share({ title, url })
+      else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        alert('Tour link copied.')
+      } else window.prompt('Copy tour link:', url)
+    } catch (error) {
+      if (error?.name !== 'AbortError') alert('Could not share this tour.')
+    }
+  }
+
+  return (
+    <div className="property-section property-tours-section">
+      <div className="section-heading">
+        <div><h2>Property Tours</h2><p>Watch, download or share property tour videos.</p></div>
+        <span className="count">{tours.length} tours</span>
+      </div>
+
+      {isAdmin && (
+        <form className="tour-upload-form" onSubmit={async e => {
+          e.preventDefault()
+          if (!propertyNumber.trim() || !sector.trim() || !files.length) return alert('Enter property number, sector and select at least one video.')
+          await onUpload({ propertyNumber: propertyNumber.trim(), sector: sector.trim(), files })
+          setPropertyNumber(''); setSector(''); setFiles([])
+          e.target.reset()
+        }}>
+          <div className="tour-upload-heading"><strong>Upload New Tour</strong><small>Only property number, sector and video files are required.</small></div>
+          <div className="tour-upload-fields">
+            <label>Property Number<input value={propertyNumber} onChange={e => setPropertyNumber(e.target.value)} placeholder="e.g. 204" required /></label>
+            <label>Sector<input value={sector} onChange={e => setSector(e.target.value)} placeholder="e.g. Sector 39" required /></label>
+            <label className="tour-file-field">Tour Videos<input type="file" accept="video/*" multiple onChange={e => setFiles(Array.from(e.target.files || []))} required /><small>{files.length} video(s) selected</small></label>
+          </div>
+          <button className="add-button" type="submit" disabled={uploading}>{uploading ? 'Uploading…' : 'Upload Property Tour'}</button>
+        </form>
+      )}
+
+      {tours.length ? <div className="property-tour-grid">
+        {tours.map(tour => <article className="property-tour-card" key={tour.id}>
+          <div className="property-tour-title"><span>{tour.sector || 'Sector'}</span><h3>Property #{tour.property_number}</h3></div>
+          <div className="property-tour-videos">
+            {(tour.media_urls || []).map((url, index) => <div className="property-tour-video" key={`${url}-${index}`}>
+              <video src={url} controls playsInline preload="metadata" />
+              <div className="property-tour-actions">
+                <button className="cancel-button" type="button" onClick={() => downloadOne(url, tour.property_number, index)}>Download</button>
+                <button className="cancel-button" type="button" onClick={() => shareOne(url, `Property ${tour.property_number} - ${tour.sector}`)}>Share</button>
+              </div>
+            </div>)}
+          </div>
+          {isAdmin && <button className="tour-delete-button" type="button" onClick={() => onDelete(tour)}>Delete Tour</button>}
+        </article>)}
+      </div> : <div className="tour-empty-state">No property tours uploaded yet.</div>}
+      <p className="tour-download-note">Videos can be downloaded or shared one at a time. Bulk download is not available.</p>
+    </div>
+  )
+}
+
 /* ---------------------------------------------------------------
    Main App
 ---------------------------------------------------------------- */
@@ -645,6 +725,8 @@ function App() {
 
   // Data
   const [properties, setProperties] = useState([])
+  const [propertyTours, setPropertyTours] = useState([])
+  const [tourUploading, setTourUploading] = useState(false)
   const [admins, setAdmins] = useState([])
   const [adminEmail, setAdminEmail] = useState('')
 
@@ -732,15 +814,18 @@ function App() {
       if (isPublic) {
         if (!companySlug) { setLoading(false); setListLoading(false); return }
         // Company info and property list load at the same time (faster first paint)
-        const [companyRes, propertiesRes] = await Promise.all([
+        const [companyRes, propertiesRes, toursRes] = await Promise.all([
           supabase.rpc('get_public_company_by_slug', { company_slug: companySlug }),
-          supabase.rpc('get_public_company_properties', { company_slug: companySlug })
+          supabase.rpc('get_public_company_properties', { company_slug: companySlug }),
+          supabase.rpc('get_public_company_tours', { company_slug: companySlug })
         ])
         if (!active) return
         if (companyRes.error || !companyRes.data) { console.error(companyRes.error); setProperties([]); setLoading(false); setListLoading(false); return }
         setCompanyInfo(companyRes.data)
         if (propertiesRes.error) console.error(propertiesRes.error)
+        if (toursRes.error) console.error(toursRes.error)
         setProperties((propertiesRes.data || []).map(mapRow))
+        setPropertyTours(toursRes.data || [])
         setLoading(false)
         setListLoading(false)
         return
@@ -779,6 +864,19 @@ function App() {
       setProperties((data || []).map(mapRow))
     }
     loadProperties()
+    return () => { active = false }
+  }, [role, activeCompanyId, isPublic])
+
+  /* ---------- Load property tours for the active company ---------- */
+  useEffect(() => {
+    if (isPublic || !role || !activeCompanyId) return
+    let active = true
+    supabase.from('property_tours').select('*').eq('company_id', activeCompanyId).order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!active) return
+        if (error) console.error('Could not load property tours:', error)
+        else setPropertyTours(data || [])
+      })
     return () => { active = false }
   }, [role, activeCompanyId, isPublic])
 
@@ -1317,6 +1415,35 @@ function App() {
     }
   }
 
+  /* ---------- Property tours ---------- */
+  const uploadPropertyTour = async ({ propertyNumber, sector, files }) => {
+    if (!isAdmin || !activeCompanyId || tourUploading) return
+    setTourUploading(true)
+    try {
+      const mediaUrls = await Promise.all(files.map(file => uploadToCloudinary(file)))
+      const { data, error } = await supabase.from('property_tours').insert({
+        company_id: activeCompanyId,
+        property_number: propertyNumber,
+        sector,
+        media_urls: mediaUrls
+      }).select('*').single()
+      if (error) throw error
+      setPropertyTours(prev => [data, ...prev])
+      alert('Property tour uploaded successfully.')
+    } catch (error) {
+      alert('Tour upload failed: ' + error.message)
+    } finally {
+      setTourUploading(false)
+    }
+  }
+
+  const deletePropertyTour = async (tour) => {
+    if (!isAdmin || !window.confirm(`Delete the tour for Property #${tour.property_number}?`)) return
+    const { error } = await supabase.from('property_tours').delete().eq('id', tour.id)
+    if (error) return alert('Could not delete tour: ' + error.message)
+    setPropertyTours(prev => prev.filter(item => item.id !== tour.id))
+  }
+
   /* ---------- Shared modal props ---------- */
   const detailsModal = selectedProperty && (
     <DetailsModal
@@ -1363,9 +1490,15 @@ function App() {
   // Public read-only page
   if (isPublic) {
     return (
-      <div className="app" style={{ "--company-accent": companyInfo?.theme_color || "#b08d57", "--company-text": companyInfo?.text_color || "#ffffff" }}>
-        <main className="main" style={{ marginLeft: 0, width: '100%' }}>
+      <div className="app public-viewer-app" style={{ "--company-accent": companyInfo?.theme_color || "#b08d57", "--company-text": companyInfo?.text_color || "#ffffff" }}>
+        <aside className="sidebar public-viewer-sidebar">
+          <div className="brand"><div className="brand-icon">P</div><span>Property<span className="green">Hub</span></span></div>
+          <p className="menu-label">VIEWER</p>
+          {['All Properties', 'Property Tours'].map(item => <button key={item} className={`nav-item ${activeTab === item ? 'active' : ''}`} onClick={() => setActiveTab(item)}>{item}</button>)}
+        </aside>
+        <main className="main" style={{ width: '100%' }}>
           <section className="content">
+            {activeTab === 'Property Tours' ? <PropertyToursPanel tours={propertyTours} isAdmin={false} /> : <>
             <div className="public-company-header">
               <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
               <span className="count">{properties.length} properties</span>
@@ -1376,6 +1509,7 @@ function App() {
               <PropertyTable rows={paginatedProperties} onView={viewProperty} publicView loadingList={listLoading} />
               {pagination}
             </div>
+            </>}
 
             {detailsModal}
             {previewModal}
@@ -1424,7 +1558,7 @@ function App() {
   }
 
   // Admin app
-  const tabs = ['All Properties', 'Company Settings', ...(isSuperAdmin ? ['Manage Companies'] : []), 'Manage Admins']
+  const tabs = ['All Properties', 'Property Tours', 'Company Settings', ...(isSuperAdmin ? ['Manage Companies'] : []), 'Manage Admins']
   const editingFolders = editingProperty
     ? getFolders({ media_urls: editingExistingMedia, media_sections: properties.find(p => p.rowId === editingOriginalId)?.media_sections || [] })
     : []
@@ -1473,7 +1607,9 @@ function App() {
         </header>
 
         <section className="content">
-          {activeTab === 'Manage Companies' && isSuperAdmin ? (
+          {activeTab === 'Property Tours' ? (
+            <PropertyToursPanel tours={propertyTours} isAdmin={isAdmin} onUpload={uploadPropertyTour} onDelete={deletePropertyTour} uploading={tourUploading} />
+          ) : activeTab === 'Manage Companies' && isSuperAdmin ? (
             <div className="property-section">
               <div className="section-heading"><div><h2>Manage Companies</h2><p>Create a separate workspace for each company.</p></div></div>
               <form className="search-box company-create-form" onSubmit={async e => { e.preventDefault(); const slug = newCompany.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''); if (!slug) return alert('Enter a valid URL slug.'); const { data, error } = await supabase.from('companies').insert({ name: newCompany.name.trim(), slug }).select('*').single(); if (error) return alert('Could not create company: ' + error.message); setCompanies(prev => [...prev, data]); setSelectedCompanyId(data.id); setNewCompany({ name: '', slug: '' }); alert('Company created.'); }}>
@@ -1580,7 +1716,7 @@ function App() {
               </div>
             </>
           )}
-          <footer className="app-footer"> Contact Harsheet for Any Update · <a href="tel:7717463674">7717463674</a></footer>
+          <footer className="app-footer">Contact Harsheet · <a href="tel:7717463674">7717463674</a></footer>
         </section>
       </main>
 

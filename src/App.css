@@ -924,3 +924,38 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .app .unit-row input { flex: 1 1 180px; min-width: 140px; }
 .app .units-block > .cancel-button { align-self: flex-start; }
 @media (max-width: 700px) { .app .unit-row select, .app .unit-row input { flex-basis: 100%; } }
+
+
+/* ---------- Property Tours workspace ---------- */
+.app .tour-upload-form { display: flex; flex-direction: column; gap: 16px; padding: 20px; margin: 8px 0 26px; border: 1px solid var(--line, #e5e7eb); border-radius: 18px; background: var(--surface, #fff); }
+.app .tour-upload-heading { display: flex; flex-direction: column; gap: 5px; }
+.app .tour-upload-heading strong { color: var(--ink, #26372c); font-size: 15px; }
+.app .tour-upload-heading small, .app .tour-upload-fields small { color: var(--muted, #829087); font-size: 12px; }
+.app .tour-upload-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.app .tour-upload-fields label { display: flex; flex-direction: column; gap: 7px; color: var(--body, #536157); font-size: 12px; font-weight: 700; }
+.app .tour-upload-fields input { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line, #dfe7e0); border-radius: 9px; background: #fff; color: #26372c; }
+.app .tour-file-field { grid-column: 1 / -1; }
+.app .property-tour-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+.app .property-tour-card { min-width: 0; padding: 16px; border: 1px solid var(--line, #e7eee8); border-radius: 17px; background: var(--surface, #fff); box-shadow: 0 8px 24px rgba(20, 35, 25, .06); }
+.app .property-tour-title { margin-bottom: 13px; }
+.app .property-tour-title span { color: var(--acc-deep, #087b45); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.app .property-tour-title h3 { margin-top: 5px; color: var(--ink, #203328); font-size: 18px; }
+.app .property-tour-videos { display: grid; gap: 13px; }
+.app .property-tour-video video { display: block; width: 100%; max-height: 310px; border-radius: 12px; background: #101010; }
+.app .property-tour-actions { display: flex; gap: 8px; margin-top: 9px; }
+.app .property-tour-actions > * { flex: 1; text-align: center; text-decoration: none; }
+.app .tour-delete-button { margin-top: 14px; border: 0; background: transparent; color: #b42318; font-size: 12px; font-weight: 700; cursor: pointer; }
+.app .tour-empty-state { padding: 44px 15px; border: 1px dashed var(--line-strong, #d9e1da); border-radius: 15px; color: var(--muted, #829087); text-align: center; }
+.app .tour-download-note { margin-top: 16px; color: var(--muted, #829087); font-size: 11px; }
+.app.public-viewer-app { display: flex; min-height: 100vh; }
+.app .public-viewer-sidebar { min-height: 100vh; }
+@media (max-width: 700px) {
+  .app.public-viewer-app { display: block; }
+  .app .public-viewer-sidebar { min-height: 0; width: 100%; padding: 15px; }
+  .app .public-viewer-sidebar .brand { margin-bottom: 14px; }
+  .app .public-viewer-sidebar .nav-item { display: inline-flex; width: auto; margin: 0 6px 0 0; padding: 10px 12px; }
+  .app .tour-upload-fields { grid-template-columns: 1fr; }
+  .app .tour-file-field { grid-column: auto; }
+  .app .tour-upload-form { padding: 14px; }
+  .app .property-tour-grid { grid-template-columns: 1fr; }
+}
