@@ -628,6 +628,7 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
   const [sector, setSector] = useState('')
   const [files, setFiles] = useState([])
   const [busyShare, setBusyShare] = useState('')
+  const [readyShare, setReadyShare] = useState(null)
   const [tourSearch, setTourSearch] = useState('')
   const filteredTours = tours.filter(tour => `${tour.property_number || ''} ${tour.sector || ''}`.toLowerCase().includes(tourSearch.trim().toLowerCase()))
 
@@ -649,14 +650,36 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
   }
 
   const shareOne = async (url, title, propertyNumber, index) => {
+    const shareKey = `${propertyNumber}-${index}`
+
+    // Second tap: call the native share sheet immediately inside the tap event.
+    // This is more reliable on iOS Safari, which can lose user activation while a
+    // video is being fetched.
+    if (readyShare?.key === shareKey) {
+      try {
+        if (!navigator.share || !navigator.canShare || !navigator.canShare({ files: [readyShare.file] })) {
+          alert('This browser cannot share video files directly. Please use Download and attach the video manually.')
+          return
+        }
+        await navigator.share({ files: [readyShare.file], title: readyShare.title })
+        setReadyShare(null)
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          console.error('Video share failed:', error)
+          alert('Could not share the video file. Please try again or use Download.')
+        }
+      }
+      return
+    }
+
     try {
-      // Share the actual video file, not its Cloudinary URL.
       if (!navigator.share || !navigator.canShare) {
         alert('This browser does not support sharing video files. Please use Download and attach the video in your sharing app.')
         return
       }
 
-      setBusyShare(`${propertyNumber}-${index}`)
+      setBusyShare(shareKey)
+      setReadyShare(null)
       const response = await fetch(url, { mode: 'cors' })
       if (!response.ok) throw new Error('Video could not be fetched')
       const blob = await response.blob()
@@ -668,12 +691,11 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
         return
       }
 
-      await navigator.share({ files: [videoFile], title, text: title })
+      setReadyShare({ key: shareKey, file: videoFile, title })
+      alert('Video is ready. Tap Share Video once more to open the iPhone/phone share menu.')
     } catch (error) {
-      if (error?.name !== 'AbortError') {
-        console.error('Video share failed:', error)
-        alert('Could not share the video file. Please try Download and share the saved video.')
-      }
+      console.error('Video preparation failed:', error)
+      alert('Could not prepare this video for sharing. Please try Download and share the saved video.')
     } finally {
       setBusyShare('')
     }
@@ -716,7 +738,7 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
               <video src={url} controls playsInline preload="metadata" />
               <div className="property-tour-actions">
                 <button className="cancel-button" type="button" onClick={() => downloadOne(url, tour.property_number, index)}>Download</button>
-                <button className="cancel-button" type="button" disabled={busyShare === `${tour.property_number}-${index}`} onClick={() => shareOne(url, `Property ${tour.property_number} - ${tour.sector}`, tour.property_number, index)}>{busyShare === `${tour.property_number}-${index}` ? 'Preparing…' : 'Share Video'}</button>
+                <button className="cancel-button" type="button" disabled={busyShare === `${tour.property_number}-${index}`} onClick={() => shareOne(url, `Property ${tour.property_number} - ${tour.sector}`, tour.property_number, index)}>{busyShare === `${tour.property_number}-${index}` ? 'Preparing…' : readyShare?.key === `${tour.property_number}-${index}` ? 'Tap again to Share' : 'Share Video'}</button>
               </div>
             </div>)}
           </div>
