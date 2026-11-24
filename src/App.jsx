@@ -1379,7 +1379,7 @@ function App() {
 
             {detailsModal}
             {previewModal}
-            <footer className="app-footer">Contact Harsheet · <a href="tel:7717463674">7717463674</a></footer>
+            <footer className="app-footer">Contact Harsheet for Any Update · <a href="tel:7717463674">7717463674</a></footer>
           </section>
         </main>
       </div>
