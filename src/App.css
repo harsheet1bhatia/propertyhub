@@ -965,3 +965,36 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .app .tour-search-input { display: block; width: 100%; min-width: 0; box-sizing: border-box; padding: 14px 16px; border: 1px solid var(--line, #dfe7e0); border-radius: 13px; background: var(--surface, #fff); color: var(--ink, #26372c); font: inherit; font-size: 14px; outline: none; }
 .app .tour-search-input:focus { border-color: var(--acc, #198754); box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc, #198754) 14%, transparent); }
 @media (max-width: 700px) { .app .public-company-header .count { max-width: 100%; white-space: normal; text-align: left; } }
+
+/* ---------- Client-safe share links ---------- */
+.app .public-header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.app .client-share-button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 10px 15px; border: 1px solid #176b42; border-radius: 10px; background: #176b42; color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: transform .18s ease, background .18s ease; }
+.app .client-share-button:hover { background: #105536; transform: translateY(-1px); }
+.app .client-share-all-button { white-space: nowrap; }
+.app .public-card-actions .client-share-button { flex: 1 1 100%; }
+.client-share-page { min-height: 100vh; padding: clamp(18px, 4vw, 48px); background: #f5f7f5; color: #203328; }
+.client-share-content { width: min(1120px, 100%); margin: 0 auto; }
+.client-share-heading { margin: 0 0 26px; text-align: center; }
+.client-share-heading > span { color: #176b42; font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+.client-share-heading h1 { margin: 8px 0 5px; color: #203328; font-size: clamp(25px, 4vw, 36px); }
+.client-share-heading p { margin: 0; color: #718078; font-size: 14px; }
+.client-share-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 20px; }
+.client-share-card { min-width: 0; overflow: hidden; border: 1px solid #e2e9e3; border-radius: 18px; background: #fff; box-shadow: 0 8px 24px rgba(20, 45, 28, .07); }
+.client-share-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 20px; }
+.client-share-card-heading span { color: #7b8a80; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.client-share-card-heading h2 { margin: 4px 0 0; color: #203328; font-size: 19px; }
+.client-share-card-heading > strong { color: #176b42; font-size: 19px; white-space: nowrap; }
+.client-share-card-heading > strong small { display: block; color: #89958d; font-size: 10px; font-weight: 500; text-align: right; }
+.client-share-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; background: #edf1ed; }
+.client-share-media-grid img, .client-share-media-grid video { display: block; width: 100%; aspect-ratio: 4 / 3; min-width: 0; object-fit: cover; background: #151515; }
+.client-share-media-grid video { object-fit: contain; }
+.client-share-no-media, .client-share-message { padding: 28px 18px; color: #718078; text-align: center; }
+@media (max-width: 700px) {
+  .app .public-header-actions { width: 100%; justify-content: flex-start; }
+  .app .public-header-actions .count { width: 100%; }
+  .app .client-share-all-button { width: 100%; }
+  .app .public-card-actions { flex-wrap: wrap; }
+  .client-share-page { padding: 16px 12px; }
+  .client-share-grid { grid-template-columns: 1fr; gap: 14px; }
+  .client-share-card-heading { padding: 15px; }
+}
