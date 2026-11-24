@@ -1016,11 +1016,11 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 @media(max-width:700px){ .app .public-client-share-toolbar { align-items:stretch; } .app .public-client-share-toolbar .client-share-button { width:100%; } }
 
 
-/* Broker name field is visible in the top-right of the public viewer header. */
-.app .public-company-header { align-items:center; }
-.app .public-header-actions { display:flex !important; align-items:flex-end; justify-content:flex-end; gap:12px; flex-wrap:wrap; width:auto; }
-.app .public-header-actions .broker-share-name-field { display:flex; flex-direction:column; gap:5px; min-width:220px; }
-.app .public-header-actions .broker-share-name-field label { display:block; color:#52645a; font-size:12px; font-weight:700; }
-.app .public-header-actions .broker-share-name-field input { display:block; width:220px; max-width:100%; min-height:42px; padding:10px 12px; border:1px solid #d7e1d9; border-radius:10px; background:#fff; color:#203328; font:inherit; box-sizing:border-box; }
-.app .public-header-actions .broker-share-name-field input:focus { border-color:#176b42; outline:none; box-shadow:0 0 0 3px rgba(23,107,66,.10); }
-@media(max-width:700px) { .app .public-header-actions { width:100%; justify-content:stretch; align-items:stretch; } .app .public-header-actions .broker-share-name-field, .app .public-header-actions .broker-share-name-field input, .app .public-header-actions .client-share-all-button { width:100%; } }
+/* Broker display name used on client share pages */
+.app .public-client-share-toolbar { display:flex; align-items:flex-end; justify-content:flex-end; gap:14px; flex-wrap:wrap; margin:0 0 18px; }
+.app .broker-share-name-field { display:flex; flex-direction:column; gap:6px; min-width:min(260px,100%); }
+.app .broker-share-name-field label { color:#52645a; font-size:12px; font-weight:700; }
+.app .broker-share-name-field input { width:100%; min-height:42px; padding:10px 12px; border:1px solid #d7e1d9; border-radius:10px; background:#fff; color:#203328; font:inherit; outline:none; box-sizing:border-box; }
+.app .broker-share-name-field input:focus { border-color:#176b42; box-shadow:0 0 0 3px rgba(23,107,66,.10); }
+.client-share-heading h1 { margin:0; }
+@media (max-width:600px) { .app .public-client-share-toolbar { align-items:stretch; } .app .broker-share-name-field { width:100%; } .app .public-client-share-toolbar .client-share-all-button { width:100%; } }
