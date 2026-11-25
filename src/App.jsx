@@ -24,6 +24,8 @@ const clientShareToken = params.get('client') || ''
 const isClientShare = Boolean(clientShareToken)
 const isPublic = params.get('public') === '1' || isClientShare
 const companySlug = params.get('company') || 'fnf-properties'
+// Broker name shown on the client page ("Properties by ...")
+const clientBrokerName = (params.get('by') || '').trim()
 
 function isVideo(url) {
   return /video\/upload/i.test(url) || /\.(mp4|mov|webm)(\?|$)/i.test(url)
@@ -138,6 +140,16 @@ function getFolders(property) {
     folders.push({ id: '__general', title, kind: 'General', items: rest.map(url => ({ url, label: '', folder: title })) })
   }
   return folders
+}
+
+// Client-share RPC rows -> same shape getFolders() expects
+function normalizeShared(row) {
+  const special = Array.isArray(row.special_videos) ? row.special_videos : []
+  return {
+    ...row,
+    media_urls: row.media_urls || [],
+    media_sections: Array.isArray(row.media_sections) ? row.media_sections : special.filter(isSection)
+  }
 }
 
 // Convert a database row into the object used by the UI
@@ -927,7 +939,7 @@ function App() {
             setClientShareError('This property link is invalid or unavailable.')
             setClientShareProperties([])
           } else {
-            setClientShareProperties(data || [])
+            setClientShareProperties((data || []).map(normalizeShared))
             if (!(data || []).length) setClientShareError('No properties are available on this link.')
           }
           setLoading(false)
@@ -1231,7 +1243,7 @@ function App() {
       })
       if (error) throw error
       if (!token) throw new Error('No share token was returned.')
-      const link = `${window.location.origin}/?client=${encodeURIComponent(token)}`
+      const link = `${window.location.origin}/?client=${encodeURIComponent(token)}&by=${encodeURIComponent(displayName)}`
       if (navigator.share) {
         try {
           await navigator.share({ title: propertyId ? 'Property Details' : 'Available Properties', text: 'View property photos, videos, sector and rent.', url: link })
@@ -1647,9 +1659,14 @@ function App() {
 
   // Client-facing share page: the RPC returns only sector, rent and media URLs.
   if (isClientShare) {
+    const brokerName = clientBrokerName || clientShareProperties.find(p => p.broker_name)?.broker_name || ''
     return (
       <div className="client-share-page">
         <main className="client-share-content">
+          <header className="client-share-heading">
+            <span>{brokerName ? 'PROPERTIES BY' : 'AVAILABLE PROPERTIES'}</span>
+            {brokerName && <h1>{brokerName}</h1>}
+          </header>
           {loading ? <p className="client-share-message">Loading properties…</p> : clientShareError ? <p className="client-share-message">{clientShareError}</p> : <ClientShareCollection properties={clientShareProperties} />}
         </main>
       </div>
