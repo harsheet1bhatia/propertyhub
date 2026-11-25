@@ -387,6 +387,7 @@ function ClientShareCollection({ properties: allProperties }) {
       return 0
     })
   }, [allProperties, filters])
+  const isMultiShare = allProperties.length > 1
   const pageSize = 30
   const totalPages = Math.max(1, Math.ceil(properties.length / pageSize))
   const visibleProperties = properties.slice((page - 1) * pageSize, page * pageSize)
@@ -400,6 +401,9 @@ function ClientShareCollection({ properties: allProperties }) {
 
   return (
     <>
+      {/* Filters + property count only when the broker shared MANY properties */}
+      {isMultiShare && (
+        <>
       <div className="client-share-filters">
         <select value={filters.type} onChange={e => setFilter('type', e.target.value)}>
           <option value="All">All Types (RK / BHK)</option>
@@ -419,6 +423,8 @@ function ClientShareCollection({ properties: allProperties }) {
         <span className="client-share-count">{properties.length} properties</span>
       </div>
       {!properties.length && <p className="client-share-message">No properties match these filters.</p>}
+        </>
+      )}
       <div className="client-share-grid">
         {visibleProperties.map((property, index) => {
           const media = Array.isArray(property.media_urls) ? property.media_urls : []
