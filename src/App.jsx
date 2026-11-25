@@ -150,7 +150,7 @@ function normalizeShared(row) {
     sector: row.sector || '',
     type: row.property_type || row.type || '',
     rent: Number(row.rent) || 0,
-    units: (special.find(entry => entry && !isSection(entry) && Array.isArray(entry.units))?.units) || [],
+    units: Array.isArray(row.units) && row.units.length ? row.units : ((special.find(entry => entry && !isSection(entry) && Array.isArray(entry.units))?.units) || []),
     media_urls: row.media_urls || [],
     media_sections: Array.isArray(row.media_sections) ? row.media_sections : special.filter(isSection)
   }
