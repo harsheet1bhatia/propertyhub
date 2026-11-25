@@ -1109,3 +1109,10 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .client-share-filters select, .client-share-filters button { flex: 1 1 42%; min-width: 0; }
   .client-share-count { flex: 1 1 100%; margin-left: 0; }
 }
+
+
+/* ---------- Client share: tap photo -> full screen + swipe ---------- */
+.client-share-photo-button { display: block; width: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.client-share-photo-button img { display: block; width: 100%; }
+.client-share-page .image-preview-overlay { z-index: 20000; }
+.client-share-page .preview-nav { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.25); }

@@ -26,6 +26,7 @@ const isPublic = params.get('public') === '1' || isClientShare
 const companySlug = params.get('company') || 'fnf-properties'
 // Broker name shown on the client page ("Properties by ...")
 const clientBrokerName = (params.get('by') || '').trim()
+const clientDebug = params.get('debug') === '1'
 
 function isVideo(url) {
   return /video\/upload/i.test(url) || /\.(mp4|mov|webm)(\?|$)/i.test(url)
@@ -367,6 +368,7 @@ function ClientShareCollection({ properties: allProperties }) {
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [openFolder, setOpenFolder] = useState(null)
   const [page, setPage] = useState(1)
+  const [preview, setPreview] = useState(null)
   const [filters, setFilters] = useState({ type: 'All', sector: 'All', sort: 'sector' })
   const setFilter = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setPage(1) }
   const clientSectors = useMemo(() => [...new Set(allProperties.map(p => p.sector).filter(Boolean))].sort(), [allProperties])
@@ -395,6 +397,7 @@ function ClientShareCollection({ properties: allProperties }) {
   const activeFolder = folders.find(folder => folder.id === openFolder) || null
   const showFolderOverview = folders.length > 1 && !activeFolder
   const visibleMedia = activeFolder ? activeFolder.items : folders.flatMap(folder => folder.items)
+  const photoList = visibleMedia.filter(item => !isVideo(item.url))
 
   const openProperty = property => { setSelectedProperty(property); setOpenFolder(null) }
   const closeProperty = () => { setSelectedProperty(null); setOpenFolder(null) }
@@ -450,11 +453,12 @@ function ClientShareCollection({ properties: allProperties }) {
             {showFolderOverview ? (
               <div className="folder-grid">{folders.map(folder => { const cover = folder.items.find(item => !isVideo(item.url)); return <button key={folder.id} className="folder-card" onClick={() => setOpenFolder(folder.id)}><span className="folder-cover">{cover ? <img src={thumb(cover.url, 420)} alt={folder.title} loading="lazy" /> : <span className="folder-icon">🎬</span>}<b>{folder.items.length}</b></span><span className="folder-name">{folder.title}</span><small>{folder.items.length} files</small></button> })}</div>
             ) : (
-              <div className="client-share-media-view">{visibleMedia.map((item, index) => <div className="client-share-media-item" key={`${item.url}-${index}`}>{isVideo(item.url) ? <video src={item.url} controls playsInline preload="metadata" /> : <img src={thumb(item.url, 900)} alt={`Property photo ${index + 1}`} loading="lazy" />}{item.label && <small>{item.label}</small>}</div>)}{!visibleMedia.length && <p className="client-share-no-media">Photos and videos are not available.</p>}</div>
+              <div className="client-share-media-view">{visibleMedia.map((item, index) => <div className="client-share-media-item" key={`${item.url}-${index}`}>{isVideo(item.url) ? <video src={item.url} controls playsInline preload="metadata" /> : <button type="button" className="client-share-photo-button" onClick={() => setPreview({ images: photoList.map(p => ({ url: p.url, label: p.label, folder: p.folder })), index: Math.max(0, photoList.findIndex(p => p.url === item.url)) })} aria-label={`Open photo ${index + 1} full screen`}><img src={thumb(item.url, 900)} alt={`Property photo ${index + 1}`} loading="lazy" /></button>}{item.label && <small>{item.label}</small>}</div>)}{!visibleMedia.length && <p className="client-share-no-media">Photos and videos are not available.</p>}</div>
             )}
           </section>
         </div>
       )}
+      {preview && <ImagePreview images={preview.images} initialIndex={preview.index} onClose={() => setPreview(null)} />}
     </>
   )
 }
@@ -725,13 +729,13 @@ function ImagePreview({ images, initialIndex = 0, onClose }) {
   }, [images.length])
 
   if (!current) return null
-  const caption = [`Property #${current.propertyId}`, current.folder && current.folder !== 'Photos & Videos' ? current.folder : '', current.label].filter(Boolean).join(' · ')
+  const caption = [current.propertyId ? `Property #${current.propertyId}` : '', current.folder && current.folder !== 'Photos & Videos' ? current.folder : '', current.label].filter(Boolean).join(' · ')
   return (
     <div className="image-preview-overlay" onClick={onClose} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <button className="preview-close" onClick={onClose}>×</button>
       <button className="preview-nav preview-prev" onClick={e => { e.stopPropagation(); move(-1) }} disabled={index === 0}>‹</button>
       <div className="preview-content" onClick={e => e.stopPropagation()} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        <img src={thumb(current.url, 1600)} alt={`Property ${current.propertyId} photo ${index + 1}`} />
+        <img src={thumb(current.url, 1600)} alt={`Property photo ${index + 1}`} />
         <p>{caption} · {index + 1} / {images.length}</p>
       </div>
       <button className="preview-nav preview-next" onClick={e => { e.stopPropagation(); move(1) }} disabled={index === images.length - 1}>›</button>
@@ -1716,6 +1720,11 @@ function App() {
             <span>{brokerName ? 'PROPERTIES BY' : 'AVAILABLE PROPERTIES'}</span>
             {brokerName && <h1>{brokerName}</h1>}
           </header>
+          {clientDebug && clientShareProperties[0] && (
+            <pre style={{ background: '#fff', border: '1px solid #ddd', padding: 12, borderRadius: 10, fontSize: 12, overflow: 'auto', marginBottom: 16 }}>
+              {'RPC columns: ' + Object.keys(clientShareProperties[0]).join(', ') + '\n' + JSON.stringify({ ...clientShareProperties[0], media_urls: '[hidden]', media_sections: '[hidden]' }, null, 2)}
+            </pre>
+          )}
           {loading ? <p className="client-share-message">Loading properties…</p> : clientShareError ? <p className="client-share-message">{clientShareError}</p> : <ClientShareCollection properties={clientShareProperties} />}
         </main>
       </div>
