@@ -147,6 +147,10 @@ function normalizeShared(row) {
   const special = Array.isArray(row.special_videos) ? row.special_videos : []
   return {
     ...row,
+    sector: row.sector || '',
+    type: row.property_type || row.type || '',
+    rent: Number(row.rent) || 0,
+    units: (special.find(entry => entry && !isSection(entry) && Array.isArray(entry.units))?.units) || [],
     media_urls: row.media_urls || [],
     media_sections: Array.isArray(row.media_sections) ? row.media_sections : special.filter(isSection)
   }
@@ -359,10 +363,30 @@ function PropertyTable({ rows, onView, onEdit, onDuplicate, onShareClient, publi
 }
 
 
-function ClientShareCollection({ properties }) {
+function ClientShareCollection({ properties: allProperties }) {
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [openFolder, setOpenFolder] = useState(null)
   const [page, setPage] = useState(1)
+  const [filters, setFilters] = useState({ type: 'All', sector: 'All', sort: 'sector' })
+  const setFilter = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setPage(1) }
+  const clientSectors = useMemo(() => [...new Set(allProperties.map(p => p.sector).filter(Boolean))].sort(), [allProperties])
+  const properties = useMemo(() => {
+    const list = allProperties.filter(p =>
+      (filters.type === 'All' || getUnits(p).some(u => u.type === filters.type)) &&
+      (filters.sector === 'All' || p.sector === filters.sector))
+    const minRent = p => Math.min(...getUnits(p).map(u => Number(u.rent) || 0))
+    return [...list].sort((a, b) => {
+      if (filters.sort === 'sector') return String(a.sector || '').localeCompare(String(b.sector || ''), undefined, { numeric: true, sensitivity: 'base' })
+      if (filters.sort === 'rent-low') return minRent(a) - minRent(b)
+      if (filters.sort === 'rent-high') return minRent(b) - minRent(a)
+      if (filters.sort === 'type') {
+        const ai = PROPERTY_TYPES.indexOf(getUnits(a)[0].type)
+        const bi = PROPERTY_TYPES.indexOf(getUnits(b)[0].type)
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+      }
+      return 0
+    })
+  }, [allProperties, filters])
   const pageSize = 30
   const totalPages = Math.max(1, Math.ceil(properties.length / pageSize))
   const visibleProperties = properties.slice((page - 1) * pageSize, page * pageSize)
@@ -376,6 +400,25 @@ function ClientShareCollection({ properties }) {
 
   return (
     <>
+      <div className="client-share-filters">
+        <select value={filters.type} onChange={e => setFilter('type', e.target.value)}>
+          <option value="All">All Types (RK / BHK)</option>
+          {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={filters.sector} onChange={e => setFilter('sector', e.target.value)}>
+          <option value="All">All Sectors</option>
+          {clientSectors.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={filters.sort} onChange={e => setFilter('sort', e.target.value)}>
+          <option value="sector">Sector (A-Z)</option>
+          <option value="rent-low">Rent: Low to High</option>
+          <option value="rent-high">Rent: High to Low</option>
+          <option value="type">Property Type</option>
+        </select>
+        <button type="button" onClick={() => { setFilters({ type: 'All', sector: 'All', sort: 'sector' }); setPage(1) }}>Reset</button>
+        <span className="client-share-count">{properties.length} properties</span>
+      </div>
+      {!properties.length && <p className="client-share-message">No properties match these filters.</p>}
       <div className="client-share-grid">
         {visibleProperties.map((property, index) => {
           const media = Array.isArray(property.media_urls) ? property.media_urls : []
@@ -385,7 +428,7 @@ function ClientShareCollection({ properties }) {
               <button type="button" className={`client-share-collage collage-count-${previews.length}`} onClick={() => openProperty(property)} aria-label={`View ${property.sector || 'property'} photos and videos`}>
                 {previews.length ? previews.map((url, mediaIndex) => <span className="collage-photo" key={`${url}-${mediaIndex}`}><img src={thumb(url, 500)} alt="Property preview" loading="lazy" />{mediaIndex === 3 && media.filter(item => !isVideo(item)).length > 4 && <b>+{media.filter(item => !isVideo(item)).length - 4}</b>}</span>) : media.length ? <span className="client-share-video-cover">▶ Video available</span> : <span className="client-share-no-media">No photos or videos</span>}
               </button>
-              <div className="client-share-card-heading"><div><span>SECTOR</span><h2>{property.sector || 'Not specified'}</h2></div><strong>{formatRent(property.rent)}<small>/ month</small></strong></div>
+              <div className="client-share-card-heading"><div><span>SECTOR</span><h2>{property.sector || 'Not specified'}</h2>{typeLabel(property) && <em className="client-share-type">{typeLabel(property)}</em>}</div><strong>{cardRent(property)}<small>/ month</small></strong></div>
               <button type="button" className="client-share-open-button" onClick={() => openProperty(property)}>View Photos &amp; Videos</button>
             </article>
           )
@@ -396,7 +439,7 @@ function ClientShareCollection({ properties }) {
       {selectedProperty && (
         <div className="client-share-modal-overlay" onClick={closeProperty}>
           <section className="client-share-modal" onClick={event => event.stopPropagation()}>
-            <header className="client-share-modal-header"><div><span>SECTOR</span><h2>{selectedProperty.sector || 'Not specified'}</h2><strong>{formatRent(selectedProperty.rent)}<small> / month</small></strong></div><button type="button" onClick={closeProperty} aria-label="Close">×</button></header>
+            <header className="client-share-modal-header"><div><span>SECTOR</span><h2>{selectedProperty.sector || 'Not specified'}</h2>{typeLabel(selectedProperty) && <em className="client-share-type">{typeLabel(selectedProperty)}</em>}<strong>{getUnits(selectedProperty).length > 1 ? getUnits(selectedProperty).map((u, i) => <span key={i} style={{ display: 'block' }}>{u.type} · {formatRent(u.rent)}<small> / month</small></span>) : <>{formatRent(selectedProperty.rent)}<small> / month</small></>}</strong></div><button type="button" onClick={closeProperty} aria-label="Close">×</button></header>
             <div className="client-share-modal-subhead"><div><h3>{activeFolder && folders.length > 1 ? activeFolder.title : 'Photos & Videos'}</h3><p>{activeFolder ? `${activeFolder.items.length} files` : `${visibleMedia.length} files in ${folders.length} folders`}</p></div>{activeFolder && folders.length > 1 && <button type="button" onClick={() => setOpenFolder(null)}>← All folders</button>}</div>
             {showFolderOverview ? (
               <div className="folder-grid">{folders.map(folder => { const cover = folder.items.find(item => !isVideo(item.url)); return <button key={folder.id} className="folder-card" onClick={() => setOpenFolder(folder.id)}><span className="folder-cover">{cover ? <img src={thumb(cover.url, 420)} alt={folder.title} loading="lazy" /> : <span className="folder-icon">🎬</span>}<b>{folder.items.length}</b></span><span className="folder-name">{folder.title}</span><small>{folder.items.length} files</small></button> })}</div>
