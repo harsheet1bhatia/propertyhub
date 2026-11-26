@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import './App.css'
 import { supabase } from './supabase'
 import { uploadToCloudinary } from './cloudinary'
-import { InstallButton, BottomNav, useLiveRefresh, announceChange, cacheGet, cacheSet, cacheClear, lsGet, lsSet } from './pwa'
+import { InstallButton, BottomNav, useLiveRefresh, announceChange, cacheGet, cacheSet, cacheClear, lsGet, lsSet, useBrand } from './pwa'
 
 /* ---------------------------------------------------------------
    Constants & helpers
@@ -70,6 +70,12 @@ function buildSpecial(legacy, units, sections) {
 function phoneHref(phone) {
   const cleaned = String(phone || '').trim().replace(/(?!^)\+/g, '').replace(/[^0-9+]/g, '')
   return cleaned ? `tel:${cleaned}` : undefined
+}
+
+// Short caption sent along with shared photos (some apps refuse a share that has no text)
+function shareInfo(property) {
+  const where = property.sector ? property.sector + ' · ' : ''
+  return { title: 'Property Details', text: where + typeLabel(property) + ' · ' + rentLabel(property) + ' / month' }
 }
 
 async function copyPropertyText(property) {
@@ -508,7 +514,7 @@ function DetailsModal({
 
     if (readyNow) {
       try {
-        await navigator.share({ files: ready.files })
+        await navigator.share({ files: ready.files, ...shareInfo(property) })
         setReady(null)
       } catch (error) {
         if (error?.name !== 'AbortError') {
@@ -538,7 +544,7 @@ function DetailsModal({
 
     if (!isIOSDevice()) {
       try {
-        await navigator.share({ files })
+        await navigator.share({ files, ...shareInfo(property) })
         return
       } catch (error) {
         if (error?.name === 'AbortError') return
@@ -947,6 +953,8 @@ function App() {
     enabled: isPublic || Boolean(role),
     pollMs: isPublic ? 60000 : 120000
   })
+  // Installed app name + logo = this company's name + logo
+  useBrand(isPublic ? { ...(companyInfo || {}), slug: companyInfo?.slug || companySlug } : (isSuperAdmin ? null : companyInfo), isPublic ? 'viewer' : 'admin')
 
   /* ---------- Auth session ---------- */
   useEffect(() => {
@@ -1877,8 +1885,7 @@ function App() {
           { label: 'Home', icon: 'home', active: activeTab === 'All Properties', onClick: () => { setActiveTab('All Properties'); window.scrollTo({ top: 0, behavior: 'smooth' }) } },
           { label: 'Search', icon: 'search', onClick: () => { setActiveTab('All Properties'); setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); document.querySelector('.search-box input')?.focus() }, 80) } },
           { label: 'Tours', icon: 'video', active: activeTab === 'Property Tours', onClick: () => setActiveTab('Property Tours') },
-          { label: 'Share', icon: 'share', onClick: () => shareClientLink(null) },
-          { label: 'Call', icon: 'phone', href: 'tel:7717463674' }
+          { label: 'Share All', icon: 'share', onClick: () => shareClientLink(null) }
         ]} />
       </div>
     )

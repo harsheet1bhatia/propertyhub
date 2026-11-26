@@ -3,22 +3,6 @@ import { supabase } from './supabase'
 import './pwa.css'
 
 /* ===============================================================
-   1) Installed app opens on the right screen
-   Broker opens the public viewer, admin opens the admin panel.
-   (Runs before App.jsx reads the URL, because imports run first.)
-================================================================ */
-const LAUNCH_KEY = 'ph_launch_search'
-try {
-  const sp = new URLSearchParams(window.location.search)
-  if (sp.get('source') === 'pwa') {
-    const saved = window.localStorage.getItem(LAUNCH_KEY) || ''
-    window.history.replaceState(null, '', window.location.pathname + saved)
-  } else if (!sp.get('client') && !sp.get('code')) {
-    window.localStorage.setItem(LAUNCH_KEY, sp.get('public') === '1' ? window.location.search : '')
-  }
-} catch { /* ignore */ }
-
-/* ===============================================================
    2) Service worker (fast open + saved photos)
 ================================================================ */
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
@@ -71,8 +55,67 @@ export async function cacheClear() {
     db.transaction(STORE, 'readwrite').objectStore(STORE).clear()
   } catch { /* ignore */ }
   try {
-    Object.keys(window.localStorage).filter(k => k.startsWith('ph_role_') || k.startsWith('ph_company')).forEach(k => window.localStorage.removeItem(k))
+    Object.keys(window.localStorage).filter(k => k.startsWith('ph_role_') || k.startsWith('ph_company') || k === 'ph_companies' || k === 'ph_brand_admin').forEach(k => window.localStorage.removeItem(k))
   } catch { /* ignore */ }
+}
+
+/* ===============================================================
+   3b) Each company gets its own app name + logo
+   Viewer app: manifest comes from /api/manifest?c=<company slug>
+   Admin app: same, with &a=1 (name gets " Admin"). Super admin = PropertyHub.
+================================================================ */
+export function logoIcon(url, size, pad) {
+  if (!url) return ''
+  if (/res\.cloudinary\.com/.test(url) && /\/upload\//.test(url)) {
+    const t = pad
+      ? 'c_fit,w_' + Math.round(size * 0.7) + ',h_' + Math.round(size * 0.7) + '/c_pad,w_' + size + ',h_' + size + ',b_white,f_png'
+      : 'c_pad,w_' + size + ',h_' + size + ',b_white,f_png'
+    return url.replace('/upload/', '/upload/' + t + '/')
+  }
+  return url
+}
+
+function setManifest(slug, mode) {
+  let link = document.querySelector('link[rel="manifest"]')
+  if (!link) { link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link) }
+  const href = slug
+    ? '/api/manifest?c=' + encodeURIComponent(slug) + (mode === 'admin' ? '&a=1' : '')
+    : '/manifest.webmanifest'
+  if (link.getAttribute('href') !== href) link.setAttribute('href', href)
+}
+
+function setHead(selector, create, attr, value) {
+  let el = document.querySelector(selector)
+  if (!el) { el = create(); document.head.appendChild(el) }
+  el.setAttribute(attr, value)
+}
+
+try {
+  const sp = new URLSearchParams(window.location.search)
+  if (sp.get('client')) {
+    /* client link: normal manifest */
+  } else if (sp.get('public') === '1') {
+    setManifest(sp.get('company') || 'fnf-properties', 'viewer')
+  } else {
+    const savedBrand = lsGet('ph_brand_admin')
+    if (savedBrand && savedBrand.slug) setManifest(savedBrand.slug, 'admin')
+  }
+} catch { /* ignore */ }
+
+// Call from App: keeps manifest, iPhone home-screen name and icon in sync with the company
+export function useBrand(info, mode) {
+  const slug = info && info.slug
+  const name = info && info.name
+  const logo = info && info.logo_url
+  useEffect(() => {
+    if (!slug || !name) return
+    if (mode === 'admin') { lsSet('ph_brand_admin', { slug }); setManifest(slug, 'admin') }
+    else setManifest(slug, 'viewer')
+    setHead('meta[name="apple-mobile-web-app-title"]', () => { const m = document.createElement('meta'); m.name = 'apple-mobile-web-app-title'; return m }, 'content', mode === 'admin' ? name + ' Admin' : name)
+    if (logo) {
+      setHead('link[rel="apple-touch-icon"]', () => { const l = document.createElement('link'); l.rel = 'apple-touch-icon'; return l }, 'href', logoIcon(logo, 180, false))
+    }
+  }, [slug, name, logo, mode])
 }
 
 /* ===============================================================

@@ -3,7 +3,7 @@
   "short_name": "PropertyHub",
   "description": "Property listings, photos and tours - always live.",
   "id": "/",
-  "start_url": "/?source=pwa",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
