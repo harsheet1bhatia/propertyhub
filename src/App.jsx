@@ -78,6 +78,12 @@ function shareInfo(property) {
   return { title: 'Property Details', text: where + typeLabel(property) + ' · ' + rentLabel(property) + ' / month' }
 }
 
+// iPhone needs a caption with shared photos. On Android a caption makes apps like WhatsApp
+// send ONLY the text, so Android shares the photos alone and the details text follows.
+function fileShareData(files, property) {
+  return isIOSDevice() ? { files, ...shareInfo(property) } : { files }
+}
+
 async function copyPropertyText(property) {
   const message = [
     `Sector: ${property.sector || 'N/A'}`,
@@ -480,6 +486,7 @@ function DetailsModal({
   const [busy, setBusy] = useState(false)
   const [ready, setReady] = useState(null)
   const [notice, setNotice] = useState('')
+  const [textPending, setTextPending] = useState(false)
   const copyPropertyDetails = () => copyPropertyText(property)
 
   const currentFolder = folders.find(f => f.id === openFolder) || (folders.length === 1 ? folders[0] : null)
@@ -494,7 +501,7 @@ function DetailsModal({
   const canShare = typeof navigator !== 'undefined' && !!navigator.share && !!navigator.canShare
   const totalFiles = (property.media_urls || []).length
 
-  const openFolderById = (id) => { setOpenFolder(id); setSelectMode(false); setSelectedMedia([]); setReady(null); setNotice('') }
+  const openFolderById = (id) => { setOpenFolder(id); setSelectMode(false); setSelectedMedia([]); setReady(null); setNotice(''); setTextPending(false) }
   const toggleSelectMode = () => { setSelectMode(v => !v); setSelectedMedia([]); setReady(null) }
 
   const handleDownload = async () => {
@@ -503,6 +510,22 @@ function DetailsModal({
     setNotice('')
     await downloadFiles(actionItems, property.id, setNotice)
     setBusy(false)
+  }
+
+  // Android: photos are sent first on their own, then the details text goes with one more tap.
+  const afterFilesShared = () => {
+    if (isIOSDevice()) return
+    setTextPending(true)
+    setNotice('Photos shared. Tap "Send Details Text" to send the property details after them.')
+  }
+  const handleShareText = async () => {
+    try {
+      await navigator.share(shareInfo(property))
+      setTextPending(false)
+      setNotice('')
+    } catch (error) {
+      if (error?.name !== 'AbortError') setNotice('Could not open share. Please try again.')
+    }
   }
 
   // Share opens the phone's share sheet (WhatsApp etc.) without saving files first.
@@ -514,7 +537,8 @@ function DetailsModal({
 
     if (readyNow) {
       try {
-        await navigator.share({ files: ready.files, ...shareInfo(property) })
+        await navigator.share(fileShareData(ready.files, property))
+        afterFilesShared()
         setReady(null)
       } catch (error) {
         if (error?.name !== 'AbortError') {
@@ -544,7 +568,8 @@ function DetailsModal({
 
     if (!isIOSDevice()) {
       try {
-        await navigator.share({ files, ...shareInfo(property) })
+        await navigator.share(fileShareData(files, property))
+        afterFilesShared()
         return
       } catch (error) {
         if (error?.name === 'AbortError') return
@@ -613,6 +638,7 @@ function DetailsModal({
           </div>
         )}
         {notice && <p className="detail-line" role="status">{notice}</p>}
+        {textPending && <div className="gallery-actions"><button className="add-button" onClick={handleShareText}>↗ Send Details Text</button></div>}
 
         {showOverview ? (
           <div className="folder-grid">
@@ -750,13 +776,26 @@ function ImagePreview({ images, initialIndex = 0, onClose }) {
   )
 }
 
-function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
+function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, onRename, uploading }) {
   const [propertyNumber, setPropertyNumber] = useState('')
   const [sector, setSector] = useState('')
   const [files, setFiles] = useState([])
   const [busyShare, setBusyShare] = useState('')
   const [readyShare, setReadyShare] = useState(null)
   const [tourSearch, setTourSearch] = useState('')
+  const [renameId, setRenameId] = useState(null)
+  const [renameForm, setRenameForm] = useState({ number: '', sector: '' })
+  const [renaming, setRenaming] = useState(false)
+  const startRename = tour => { setRenameId(tour.id); setRenameForm({ number: tour.property_number || '', sector: tour.sector || '' }) }
+  const saveRename = async tour => {
+    const number = renameForm.number.trim()
+    const sectorName = renameForm.sector.trim()
+    if (!number || !sectorName) return alert('Property number and sector cannot be empty.')
+    setRenaming(true)
+    const ok = await onRename(tour, { propertyNumber: number, sector: sectorName })
+    setRenaming(false)
+    if (ok) setRenameId(null)
+  }
   const filteredTours = tours.filter(tour => `${tour.property_number || ''} ${tour.sector || ''}`.toLowerCase().includes(tourSearch.trim().toLowerCase()))
 
   const downloadOne = async (url, propertyNumber, index) => {
@@ -859,7 +898,18 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
 
       {filteredTours.length ? <div className="property-tour-grid">
         {filteredTours.map(tour => <article className="property-tour-card" key={tour.id}>
-          <div className="property-tour-title"><span>{tour.sector || 'Sector'}</span><h3>Property #{tour.property_number}</h3></div>
+          {renameId === tour.id ? (
+            <div className="tour-upload-fields" style={{ marginBottom: 13 }}>
+              <label>Property Number<input value={renameForm.number} onChange={e => setRenameForm(p => ({ ...p, number: e.target.value }))} /></label>
+              <label>Sector<input value={renameForm.sector} onChange={e => setRenameForm(p => ({ ...p, sector: e.target.value }))} /></label>
+              <div className="property-tour-actions" style={{ gridColumn: '1 / -1' }}>
+                <button className="add-button" type="button" disabled={renaming} onClick={() => saveRename(tour)}>{renaming ? 'Saving…' : 'Save'}</button>
+                <button className="cancel-button" type="button" disabled={renaming} onClick={() => setRenameId(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="property-tour-title"><span>{tour.sector || 'Sector'}</span><h3>Property #{tour.property_number}</h3></div>
+          )}
           <div className="property-tour-videos">
             {(tour.media_urls || []).map((url, index) => <div className="property-tour-video" key={`${url}-${index}`}>
               <video src={url} controls playsInline preload="metadata" />
@@ -869,6 +919,7 @@ function PropertyToursPanel({ tours, isAdmin, onUpload, onDelete, uploading }) {
               </div>
             </div>)}
           </div>
+          {isAdmin && onRename && renameId !== tour.id && <button className="tour-delete-button" style={{ color: 'var(--acc-deep)', marginRight: 18 }} type="button" onClick={() => startRename(tour)}>Rename</button>}
           {isAdmin && <button className="tour-delete-button" type="button" onClick={() => onDelete(tour)}>Delete Tour</button>}
         </article>)}
       </div> : <div className="tour-empty-state">{tours.length ? 'No tours match your search.' : 'No property tours uploaded yet.'}</div>}
@@ -896,6 +947,8 @@ function App() {
   const [loading, setLoading] = useState(!isPublic || isClientShare)
   const [listLoading, setListLoading] = useState(true)
   const [email, setEmail] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
   const [brokerDisplayName, setBrokerDisplayName] = useState(() => {
     try { return window.localStorage.getItem('propertyhub_broker_display_name') || '' } catch { return '' }
   })
@@ -1251,7 +1304,13 @@ function App() {
 
     if (error) return alert('Could not send login link: ' + error.message)
 
-    alert('Login link sent! Check your email and click the link.')
+    setOtpSent(true)
+    alert('Login link sent! Check your email. You can click the link, or type the 6-digit code below.')
+  }
+
+  const verifyCode = async () => {
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: otpCode.trim(), type: 'email' })
+    if (error) alert('That code did not work: ' + error.message)
   }
 
   const logout = async () => {
@@ -1775,6 +1834,19 @@ function App() {
     announceChange(liveSlug)
   }
 
+  const renamePropertyTour = async (tour, { propertyNumber, sector }) => {
+    if (!isAdmin) return false
+    const { data, error } = await supabase.from('property_tours')
+      .update({ property_number: propertyNumber, sector })
+      .eq('id', tour.id)
+      .select('*')
+      .single()
+    if (error) { alert('Could not rename tour: ' + error.message); return false }
+    setPropertyTours(prev => prev.map(item => item.id === tour.id ? data : item))
+    announceChange(liveSlug)
+    return true
+  }
+
   /* ---------- Shared modal props ---------- */
   const detailsModal = selectedProperty && (
     <DetailsModal
@@ -1910,6 +1982,22 @@ function App() {
           </label>
 
           <button className="add-button" type="submit">Send Login Link</button>
+
+          {otpSent && (
+            <>
+              <label>Code from email (optional)
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={otpCode}
+                  onChange={e => setOtpCode(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); verifyCode() } }}
+                  placeholder="6-digit code"
+                />
+              </label>
+              <button className="cancel-button" type="button" onClick={verifyCode} disabled={!otpCode.trim()}>Login with Code</button>
+            </>
+          )}
         </form>
       </div>
     )
@@ -1980,7 +2068,7 @@ function App() {
 
         <section className="content">
           {activeTab === 'Property Tours' ? (
-            <PropertyToursPanel tours={propertyTours} isAdmin={isAdmin} onUpload={uploadPropertyTour} onDelete={deletePropertyTour} uploading={tourUploading} />
+            <PropertyToursPanel tours={propertyTours} isAdmin={isAdmin} onUpload={uploadPropertyTour} onDelete={deletePropertyTour} onRename={renamePropertyTour} uploading={tourUploading} />
           ) : activeTab === 'Manage Companies' && isSuperAdmin ? (
             <div className="property-section">
               <div className="section-heading"><div><h2>Manage Companies</h2><p>Create a separate workspace for each company.</p></div></div>

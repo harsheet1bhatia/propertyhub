@@ -96,6 +96,9 @@ try {
     /* client link: normal manifest */
   } else if (sp.get('public') === '1') {
     setManifest(sp.get('company') || 'fnf-properties', 'viewer')
+    // iPhone: tell Safari this page is a full-screen app so the home-screen icon opens THIS viewer link
+    setHead('meta[name="apple-mobile-web-app-capable"]', () => { const m = document.createElement('meta'); m.name = 'apple-mobile-web-app-capable'; return m }, 'content', 'yes')
+    setHead('meta[name="mobile-web-app-capable"]', () => { const m = document.createElement('meta'); m.name = 'mobile-web-app-capable'; return m }, 'content', 'yes')
   } else {
     const savedBrand = lsGet('ph_brand_admin')
     if (savedBrand && savedBrand.slug) setManifest(savedBrand.slug, 'admin')
