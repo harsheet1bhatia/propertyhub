@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import './App.css'
 import { supabase } from './supabase'
+import { fetchShareFile, makeShareFile, buildBatches } from './shareFiles'
 import { uploadToCloudinary } from './cloudinary'
 import { InstallButton, BottomNav, useLiveRefresh, announceChange, cacheGet, cacheSet, cacheClear, lsGet, lsSet, useBrand } from './pwa'
 
@@ -512,12 +513,63 @@ function DetailsModal({
     setBusy(false)
   }
 
-  // Android: photos are sent first on their own, then the details text goes with one more tap.
-  const afterFilesShared = () => {
-    if (isIOSDevice()) return
+  // ---------- Sharing ----------
+  // Files are downloaded in the background as soon as a folder is open, so Share is ONE instant tap.
+  // Android Chrome only accepts about 10 files / 50 MB per share, so bigger sets go in parts.
+  const filesRef = useRef(new Map())
+  const failedRef = useRef(new Set())
+  const [preparedTick, setPreparedTick] = useState(0)
+  const [batchNo, setBatchNo] = useState(0)
+  const onIOSDevice = isIOSDevice()
+  const settled = actionItems.filter(i => filesRef.current.has(i.url) || failedRef.current.has(i.url)).length
+  const allReady = actionItems.length > 0 && settled === actionItems.length
+  const plan = useMemo(() => buildBatches(actionItems, filesRef.current, onIOSDevice), [sig, preparedTick])
+
+  useEffect(() => { setBatchNo(0) }, [sig])
+
+  useEffect(() => {
+    if (!canShare || showOverview || !actionItems.length) return undefined
+    let cancelled = false
+    ;(async () => {
+      for (const item of actionItems) {
+        if (cancelled) return
+        if (filesRef.current.has(item.url) || failedRef.current.has(item.url)) continue
+        try {
+          filesRef.current.set(item.url, await fetchShareFile(item))
+        } catch (error) {
+          console.error('Could not prepare file:', item.url, error)
+          failedRef.current.add(item.url)
+        }
+        if (!cancelled) setPreparedTick(n => n + 1)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [sig, showOverview, canShare])
+
+  const finishShare = (skippedCount) => {
+    setBatchNo(0)
+    const skippedNote = skippedCount ? ` ${skippedCount} file(s) were too large to share directly. Please use Download for those.` : ''
+    if (onIOSDevice) { setNotice(skippedNote.trim()); return }
     setTextPending(true)
-    setNotice('Photos shared. Tap "Send Details Text" to send the property details after them.')
+    setNotice('Photos & videos shared. Tap "Send Details Text" to send the property details after them.' + skippedNote)
   }
+
+  const runShare = async (files) => {
+    if (!navigator.canShare({ files })) {
+      setNotice('This browser cannot share these files directly. Please use Download instead.')
+      return false
+    }
+    try {
+      await navigator.share(onIOSDevice ? { files, ...shareInfo(property) } : { files })
+      return true
+    } catch (error) {
+      if (error?.name === 'AbortError') return false
+      console.error('Share failed:', error)
+      setNotice(`Could not open share (${error?.name || 'error'}). Please tap Share again, or use Download.`)
+      return false
+    }
+  }
+
   const handleShareText = async () => {
     try {
       await navigator.share(shareInfo(property))
@@ -528,57 +580,48 @@ function DetailsModal({
     }
   }
 
-  // Share opens the phone's share sheet (WhatsApp etc.) without saving files first.
-  // iPhone needs the share to start straight from a tap, so files are prepared on the
-  // first tap and shared on the next one. Android usually shares in one tap.
+  // "All folders" view does not download in the background (could be a lot of data):
+  // the first tap prepares everything, the next tap shares instantly.
+  const prepareAllNow = async () => {
+    setBusy(true)
+    try {
+      for (const item of actionItems) {
+        if (filesRef.current.has(item.url) || failedRef.current.has(item.url)) continue
+        try { filesRef.current.set(item.url, await fetchShareFile(item)) } catch (error) { failedRef.current.add(item.url) }
+        setPreparedTick(n => n + 1)
+      }
+      setNotice('Files are ready. Tap Share once more.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleShare = async () => {
     if (!actionItems.length || busy) return
     setNotice('')
-
-    if (readyNow) {
-      try {
-        await navigator.share(fileShareData(ready.files, property))
-        afterFilesShared()
-        setReady(null)
-      } catch (error) {
-        if (error?.name !== 'AbortError') {
-          console.error('Share failed:', error)
-          setNotice('Could not open share. Please tap Share again.')
-        }
-      }
+    if (!allReady) {
+      if (showOverview) { await prepareAllNow(); return }
+      setNotice(`Getting files ready (${settled}/${actionItems.length})… tap Share again in a moment.`)
       return
     }
-
-    setBusy(true)
-    let files
-    try {
-      files = await prepareFiles(actionItems, property.id)
-    } catch (error) {
-      console.error('Could not prepare files:', error)
-      setNotice(error.message || 'Files could not be prepared. Please try again.')
-      setBusy(false)
-      return
+    const list = plan.batches
+    if (!list.length) { setNotice('These files cannot be shared directly (too large). Please use Download.'); return }
+    const no = batchNo >= list.length ? 0 : batchNo
+    const files = list[no].map(item => makeShareFile(filesRef.current.get(item.url), item, property.id, actionItems.indexOf(item)))
+    const done = await runShare(files)
+    if (!done) return
+    if (no + 1 < list.length) {
+      setBatchNo(no + 1)
+      setNotice(`Part ${no + 1} of ${list.length} sent. Tap Share for the next part.`)
+    } else {
+      finishShare(plan.skipped.length)
     }
-    setBusy(false)
-
-    if (!navigator.canShare({ files })) {
-      setNotice('This browser cannot share these files directly. Please use Download instead.')
-      return
-    }
-
-    if (!isIOSDevice()) {
-      try {
-        await navigator.share(fileShareData(files, property))
-        afterFilesShared()
-        return
-      } catch (error) {
-        if (error?.name === 'AbortError') return
-      }
-    }
-
-    setReady({ sig, files })
-    setNotice(`${files.length} file(s) are ready. Tap Share once more to choose WhatsApp or any app.`)
   }
+
+  const shareLabel = busy ? 'Please wait…'
+    : (!allReady && !showOverview) ? `Preparing ${settled}/${actionItems.length}…`
+    : (allReady && plan.batches.length > 1) ? `↗ Share part ${Math.min(batchNo, plan.batches.length - 1) + 1} of ${plan.batches.length}`
+    : `↗ Share ${countLabel}`
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -629,7 +672,7 @@ function DetailsModal({
             <button className="add-button" onClick={handleDownload} disabled={busy}>⬇ Download {countLabel}</button>
             {canShare && (
               <button className="add-button" onClick={handleShare} disabled={busy}>
-                {busy ? 'Please wait…' : readyNow ? `↗ Tap to Share (${actionItems.length})` : `↗ Share ${countLabel}`}
+                {shareLabel}
               </button>
             )}
             {isAdmin && selectMode && !showOverview && (

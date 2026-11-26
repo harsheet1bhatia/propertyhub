@@ -75,8 +75,13 @@ export function logoIcon(url, size, pad) {
   return url
 }
 
+const onIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
 function setManifest(slug, mode) {
   let link = document.querySelector('link[rel="manifest"]')
+  // iPhone viewer: NO manifest on purpose. Safari then adds the exact link that is open,
+  // so the home-screen icon opens the viewer instead of the admin login page.
+  if (mode === 'viewer' && onIOS()) { if (link) link.remove(); return }
   if (!link) { link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link) }
   const href = slug
     ? '/api/manifest?c=' + encodeURIComponent(slug) + (mode === 'admin' ? '&a=1' : '')
