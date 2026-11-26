@@ -9,6 +9,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>propertyhub</title>
     <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+(function(){try{var p=new URLSearchParams(location.search),l=document.querySelector('link[rel="manifest"]');if(p.get('public')==='1'&&!p.get('client')){if(!l){l=document.createElement('link');l.rel='manifest';document.head.appendChild(l)}l.href='/api/manifest?c='+encodeURIComponent(p.get('company')||'fnf-properties')}}catch(e){}})();
+</script>
     <meta name="theme-color" content="#12100d" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
