@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import './App.css'
 import { supabase } from './supabase'
 import { uploadToCloudinary } from './cloudinary'
+import { InstallButton, BottomNav, useLiveRefresh, announceChange, cacheGet, cacheSet, cacheClear, lsGet, lsSet } from './pwa'
 
 /* ---------------------------------------------------------------
    Constants & helpers
@@ -931,6 +932,22 @@ function App() {
   const setFilter = (key, value) => setFilters(prev => ({ ...prev, [key]: value }))
   const resetFilters = () => setFilters(emptyFilters)
 
+  /* ---------- App mode: live updates + instant open ---------- */
+  const [refreshTick, setRefreshTick] = useState(0)
+  const freshRef = useRef(false)      // true once real data arrived from the server
+  const cachedRef = useRef(false)     // true when the screen was filled from the saved copy
+  const loadedForRef = useRef(null)
+  const liveSlug = isPublic
+    ? (isClientShare ? null : companySlug)
+    : (isSuperAdmin ? companies.find(c => c.id === activeCompanyId)?.slug : companyInfo?.slug)
+  useLiveRefresh({
+    key: liveSlug,
+    onChange: () => setRefreshTick(t => t + 1),
+    dbEvents: isAdmin && !isPublic,
+    enabled: isPublic || Boolean(role),
+    pollMs: isPublic ? 60000 : 120000
+  })
+
   /* ---------- Auth session ---------- */
   useEffect(() => {
     if (isPublic) {
@@ -960,6 +977,12 @@ function App() {
     }
 
     let active = true
+    const cachedRole = lsGet('ph_role_' + userId)
+    if (cachedRole?.role) {
+      setRole(cachedRole.role)
+      setCompanyId(cachedRole.companyId || null)
+      setRoleChecked(true)
+    }
 
     async function loadRole() {
       const { data, error } = await supabase
@@ -969,10 +992,13 @@ function App() {
         .maybeSingle()
 
       if (!active) return
+      if (error && cachedRole?.role) return // no internet: keep the saved role
 
-      setRole(error || !data || data.is_active === false ? null : data.role)
+      const nextRole = error || !data || data.is_active === false ? null : data.role
+      setRole(nextRole)
       setCompanyId(data?.company_id || null)
       setRoleChecked(true)
+      lsSet('ph_role_' + userId, nextRole ? { role: nextRole, companyId: data?.company_id || null } : null)
     }
 
     loadRole()
@@ -989,11 +1015,15 @@ function App() {
           if (!active) return
           if (error) {
             console.error('Client share could not be loaded:', error)
-            setClientShareError('This property link is invalid or unavailable.')
-            setClientShareProperties([])
+            if (!cachedRef.current) {
+              setClientShareError('This property link is invalid or unavailable.')
+              setClientShareProperties([])
+            }
           } else {
+            freshRef.current = true
+            setClientShareError((data || []).length ? '' : 'No properties are available on this link.')
             setClientShareProperties((data || []).map(normalizeShared))
-            if (!(data || []).length) setClientShareError('No properties are available on this link.')
+            cacheSet('client:' + clientShareToken, data || [])
           }
           setLoading(false)
           setListLoading(false)
@@ -1007,65 +1037,129 @@ function App() {
           supabase.rpc('get_public_company_tours', { p_company_slug: companySlug })
         ])
         if (!active) return
-        if (companyRes.error || !companyRes.data) { console.error(companyRes.error); setProperties([]); setLoading(false); setListLoading(false); return }
+        if (companyRes.error) {
+          console.error(companyRes.error)
+          if (!cachedRef.current) setProperties([])
+          setLoading(false); setListLoading(false); return
+        }
+        if (!companyRes.data) {
+          // company missing or on hold: show nothing and forget the saved copy
+          setCompanyInfo(null); setProperties([]); setPropertyTours([])
+          cacheSet('pub:' + companySlug, null)
+          setLoading(false); setListLoading(false); return
+        }
+        freshRef.current = true
         setCompanyInfo(companyRes.data)
         if (propertiesRes.error) console.error(propertiesRes.error)
         if (toursRes.error) console.error(toursRes.error)
-        setProperties((propertiesRes.data || []).map(mapRow))
-        setPropertyTours(toursRes.data || [])
+        if (!propertiesRes.error) setProperties((propertiesRes.data || []).map(mapRow))
+        if (!toursRes.error) setPropertyTours(toursRes.data || [])
+        if (!propertiesRes.error && !toursRes.error) {
+          cacheSet('pub:' + companySlug, { companyInfo: companyRes.data, properties: propertiesRes.data || [], tours: toursRes.data || [] })
+        }
         setLoading(false)
         setListLoading(false)
         return
       }
       if (!role) return
       if (isSuperAdmin) {
+        const savedList = lsGet('ph_companies')
+        if (savedList?.length) {
+          setCompanies(savedList)
+          setSelectedCompanyId(prev => prev || savedList[0].id)
+        }
         const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: true })
         if (!active) return
         if (error) { console.error(error); return }
         setCompanies(data || [])
+        lsSet('ph_companies', data || [])
         setSelectedCompanyId(prev => prev || data?.[0]?.id || '')
         if (!data?.length) setListLoading(false)
       } else if (companyId) {
+        const savedCompany = lsGet('ph_company_' + companyId)
+        if (savedCompany) {
+          setCompanyInfo(savedCompany)
+          setCompanySettings({ name: savedCompany.name || '', logo_url: savedCompany.logo_url || '', theme_color: savedCompany.theme_color || '#b08d57', text_color: savedCompany.text_color || '#ffffff' })
+        }
         const { data, error } = await supabase.from('companies').select('*').eq('id', companyId).single()
         if (!active) return
         if (error) console.error(error)
         setCompanyInfo(data || null)
-        if (data) setCompanySettings({ name: data.name || '', logo_url: data.logo_url || '', theme_color: data.theme_color || '#b08d57', text_color: data.text_color || '#ffffff' })
+        if (data) {
+          lsSet('ph_company_' + companyId, data)
+          setCompanySettings({ name: data.name || '', logo_url: data.logo_url || '', theme_color: data.theme_color || '#b08d57', text_color: data.text_color || '#ffffff' })
+        }
       }
     }
     loadCompanies()
     return () => { active = false }
-  }, [role, companyId, isSuperAdmin, isPublic, companySlug])
+  }, [role, companyId, isSuperAdmin, isPublic, companySlug, isPublic ? refreshTick : 0])
+
+  /* ---------- Show the last saved data instantly (viewer + client pages) ---------- */
+  useEffect(() => {
+    if (!isPublic) return
+    let active = true
+    cacheGet(isClientShare ? 'client:' + clientShareToken : 'pub:' + companySlug).then(saved => {
+      if (!active || !saved || freshRef.current) return
+      cachedRef.current = true
+      if (isClientShare) {
+        setClientShareProperties(saved.map(normalizeShared))
+      } else {
+        setCompanyInfo(saved.companyInfo || null)
+        setProperties((saved.properties || []).map(mapRow))
+        setPropertyTours(saved.tours || [])
+      }
+      setLoading(false)
+      setListLoading(false)
+    })
+    return () => { active = false }
+  }, [])
 
   /* ---------- Load properties for the active company ---------- */
   useEffect(() => {
     if (isPublic) return
     if (!role || !activeCompanyId) { setProperties([]); return }
     let active = true
-    async function loadProperties() {
+    let fresh = false
+    if (loadedForRef.current !== activeCompanyId) {
+      loadedForRef.current = activeCompanyId
+      setProperties([])
       setListLoading(true)
+    }
+    cacheGet('adm:' + activeCompanyId).then(saved => {
+      if (!active || fresh || !saved) return
+      setProperties(saved.map(mapRow))
+      setListLoading(false)
+    })
+    async function loadProperties() {
       const { data, error } = await supabase.from('properties').select('*').eq('company_id', activeCompanyId).order('created_at', { ascending: false })
       if (!active) return
       setListLoading(false)
       if (error) { console.error(error); return }
+      fresh = true
       setProperties((data || []).map(mapRow))
+      cacheSet('adm:' + activeCompanyId, data || [])
     }
     loadProperties()
     return () => { active = false }
-  }, [role, activeCompanyId, isPublic])
+  }, [role, activeCompanyId, isPublic, refreshTick])
 
   /* ---------- Load property tours for the active company ---------- */
   useEffect(() => {
     if (isPublic || !role || !activeCompanyId) return
     let active = true
+    let fresh = false
+    cacheGet('tours:' + activeCompanyId).then(saved => { if (active && saved && !fresh) setPropertyTours(saved) })
     supabase.from('property_tours').select('*').eq('company_id', activeCompanyId).order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (!active) return
-        if (error) console.error('Could not load property tours:', error)
-        else setPropertyTours(data || [])
+        if (error) { console.error('Could not load property tours:', error); return }
+        fresh = true
+        setPropertyTours(data || [])
+        cacheSet('tours:' + activeCompanyId, data || [])
       })
     return () => { active = false }
-  }, [role, activeCompanyId, isPublic])
+  }, [role, activeCompanyId, isPublic, refreshTick])
 
   /* ---------- Load admins for the active company ---------- */
   useEffect(() => {
@@ -1154,6 +1248,7 @@ function App() {
 
   const logout = async () => {
     await supabase.auth.signOut()
+    cacheClear()
     setSession(null)
     setRole(null)
     setRoleChecked(false)
@@ -1544,6 +1639,7 @@ function App() {
         alert('Property saved successfully!')
       }
 
+      announceChange(liveSlug)
       closeForm()
       setActiveTab('All Properties')
     } catch (error) {
@@ -1565,6 +1661,7 @@ function App() {
     if (error) return alert('Delete failed: ' + error.message)
 
     setProperties(prev => prev.filter(p => p.rowId !== property.rowId))
+    announceChange(liveSlug)
     closeDetails()
     if (editingOriginalId === property.rowId) closeForm()
     alert('Property deleted.')
@@ -1595,6 +1692,7 @@ function App() {
     const updated = { ...property, media_urls: newUrls, media_sections: sections }
 
     setProperties(prev => prev.map(p => p.rowId === property.rowId ? updated : p))
+    announceChange(liveSlug)
     setSelectedProperty(updated)
     setSelectedMedia([])
   }
@@ -1652,6 +1750,7 @@ function App() {
       }).select('*').single()
       if (error) throw error
       setPropertyTours(prev => [data, ...prev])
+      announceChange(liveSlug)
       alert('Property tour uploaded successfully.')
     } catch (error) {
       alert('Tour upload failed: ' + error.message)
@@ -1665,6 +1764,7 @@ function App() {
     const { error } = await supabase.from('property_tours').delete().eq('id', tour.id)
     if (error) return alert('Could not delete tour: ' + error.message)
     setPropertyTours(prev => prev.filter(item => item.id !== tour.id))
+    announceChange(liveSlug)
   }
 
   /* ---------- Shared modal props ---------- */
@@ -1745,6 +1845,7 @@ function App() {
               <div className="public-company-header">
                 <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
                 <div className="public-header-actions"><div className="broker-share-name-field"><label htmlFor="broker-display-name">Your Name (shown to clients)</label><input id="broker-display-name" type="text" value={brokerDisplayName} onChange={e => { const value = e.target.value; setBrokerDisplayName(value); try { window.localStorage.setItem('propertyhub_broker_display_name', value) } catch {} }} placeholder="Enter your name" maxLength={60} /></div>
+                <InstallButton />
                 <button type="button" className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button>
                   <span className="count">{properties.length} properties · {propertyTours.length} property tours</span>
                 </div>
@@ -1754,6 +1855,7 @@ function App() {
             <div className="public-company-header">
               <div className="public-brand-lockup">{companyInfo?.logo_url ? <img src={companyInfo.logo_url} alt="Company logo" /> : <span className="public-brand-monogram">{(companyInfo?.name || 'P').slice(0,1)}</span>}<div className="public-brand-text"><h1>{companyInfo?.name || 'PROPERTY LISTINGS'}</h1></div></div>
               <div className="public-header-actions"><div className="broker-share-name-field"><label htmlFor="broker-display-name">Your Name (shown to clients)</label><input id="broker-display-name" type="text" value={brokerDisplayName} onChange={e => { const value = e.target.value; setBrokerDisplayName(value); try { window.localStorage.setItem('propertyhub_broker_display_name', value) } catch {} }} placeholder="Enter your name" maxLength={60} /></div>
+                <InstallButton />
                 <button type="button" className="client-share-button client-share-all-button" onClick={() => shareClientLink(null)}>Share All Properties</button>
                 <span className="count">{properties.length} properties</span>
               </div>
@@ -1771,6 +1873,13 @@ function App() {
             <footer className="app-footer">Contact Harsheet for Any Update · <a href="tel:7717463674">7717463674</a></footer>
           </section>
         </main>
+        <BottomNav items={[
+          { label: 'Home', icon: 'home', active: activeTab === 'All Properties', onClick: () => { setActiveTab('All Properties'); window.scrollTo({ top: 0, behavior: 'smooth' }) } },
+          { label: 'Search', icon: 'search', onClick: () => { setActiveTab('All Properties'); setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); document.querySelector('.search-box input')?.focus() }, 80) } },
+          { label: 'Tours', icon: 'video', active: activeTab === 'Property Tours', onClick: () => setActiveTab('Property Tours') },
+          { label: 'Share', icon: 'share', onClick: () => shareClientLink(null) },
+          { label: 'Call', icon: 'phone', href: 'tel:7717463674' }
+        ]} />
       </div>
     )
   }
@@ -1857,6 +1966,7 @@ function App() {
           <div className="profile">
             <div className="avatar">{session.user.email?.[0]?.toUpperCase()}</div>
             <div><strong>{session.user.email}</strong><small>{role}</small></div>
+            <InstallButton />
             <button className="cancel-button" onClick={logout}>Logout</button>
           </div>
         </header>
@@ -1878,7 +1988,7 @@ function App() {
           ) : activeTab === 'Company Settings' ? (
             <div className="property-section company-settings">
               <div className="section-heading"><div><h2>Company Settings</h2><p>Update your company identity and public listing appearance.</p></div></div>
-              <form className="property-form settings-form" onSubmit={async e => { e.preventDefault(); const targetId = isSuperAdmin ? activeCompanyId : companyId; if (!targetId) return alert('Select a company first.'); const { data, error } = await supabase.from('companies').update(companySettings).eq('id', targetId).select('*').single(); if (error) return alert('Update failed: ' + error.message); setCompanyInfo(data); if (isSuperAdmin) setCompanies(prev => prev.map(c => c.id === data.id ? data : c)); alert('Company settings updated.'); }}>
+              <form className="property-form settings-form" onSubmit={async e => { e.preventDefault(); const targetId = isSuperAdmin ? activeCompanyId : companyId; if (!targetId) return alert('Select a company first.'); const { data, error } = await supabase.from('companies').update(companySettings).eq('id', targetId).select('*').single(); if (error) return alert('Update failed: ' + error.message); setCompanyInfo(data); if (isSuperAdmin) setCompanies(prev => prev.map(c => c.id === data.id ? data : c)); announceChange(liveSlug); alert('Company settings updated.'); }}>
                 {isSuperAdmin && <label>Select Company<select value={activeCompanyId || ''} onChange={e => { setSelectedCompanyId(e.target.value); const c = companies.find(x => x.id === e.target.value); if (c) setCompanySettings({ name: c.name, logo_url: c.logo_url || '', theme_color: c.theme_color || '#b08d57', text_color: c.text_color || '#ffffff' }); }}>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
                 <label>Company Name<input value={companySettings.name} onChange={e => setCompanySettings(p => ({ ...p, name: e.target.value }))} required /></label>
                 <label>Logo URL<input type="url" value={companySettings.logo_url} onChange={e => setCompanySettings(p => ({ ...p, logo_url: e.target.value }))} placeholder="https://..." /></label>
@@ -2151,6 +2261,21 @@ function App() {
         </div>
       )}
 
+      <BottomNav
+        items={[
+          { label: 'Home', icon: 'home', active: activeTab === 'All Properties', onClick: () => setActiveTab('All Properties') },
+          { label: 'Tours', icon: 'video', active: activeTab === 'Property Tours', onClick: () => setActiveTab('Property Tours') },
+          { label: 'Add', icon: 'plus', primary: true, onClick: openAddForm },
+          { label: 'Settings', icon: 'settings', active: activeTab === 'Company Settings', onClick: () => setActiveTab('Company Settings') }
+        ]}
+        moreItems={[
+          { label: 'Manage Admins', onClick: () => setActiveTab('Manage Admins') },
+          ...(isSuperAdmin ? [{ label: 'Manage Companies', onClick: () => setActiveTab('Manage Companies') }] : []),
+          { label: 'Copy Public Link', onClick: sharePublicLink },
+          { label: 'Logout', onClick: logout, danger: true }
+        ]}
+        moreActive={activeTab === 'Manage Admins' || activeTab === 'Manage Companies'}
+      />
       {detailsModal}
       {previewModal}
     </div>
