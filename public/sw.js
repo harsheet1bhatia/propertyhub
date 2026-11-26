@@ -1,94 +1,79 @@
-/* PropertyHub service worker
-   - Opens the app instantly from the saved copy (and updates it quietly in the background)
-   - Keeps photos once seen, so galleries open fast
-   - NEVER caches live data (properties / tours): the app handles that itself */
-const VERSION = 'ph-v1'
-const SHELL = VERSION + '-shell'
+// PropertyHub service worker v6
+// - pages: always network first (so a new version is picked up immediately)
+// - /assets/*: cached (file names change on every build)
+// - Cloudinary photos shown in the page: cached for fast opening
+// - everything else (share/download fetches, Supabase, /api/manifest, videos) goes straight to the network
+const VERSION = 'ph-v6'
+const PAGES = VERSION + '-pages'
 const ASSETS = VERSION + '-assets'
 const IMAGES = VERSION + '-images'
-const FONTS = VERSION + '-fonts'
-const MAX_IMAGES = 400
+const MAX_IMAGES = 300
 
-// Save the build files (JS/CSS) that an index.html points to
-async function cacheBuildFiles(html) {
-  const urls = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(m => m[1])
-  const cache = await caches.open(ASSETS)
-  await Promise.all([...new Set(urls)].map(async url => {
-    if (await cache.match(url)) return
-    try { const res = await fetch(url); if (res.ok) await cache.put(url, res) } catch (e) { /* ignore */ }
-  }))
-}
-
-// Fetch the latest index.html; save its files first, then the page itself (so they always match)
-async function refreshShell() {
-  const res = await fetch('/', { cache: 'no-store' })
-  if (!res.ok) return
-  const copy = res.clone()
-  await cacheBuildFiles(await res.text())
-  await (await caches.open(SHELL)).put('/', copy)
-}
-
-self.addEventListener('install', event => {
-  event.waitUntil(refreshShell().catch(() => {}).then(() => self.skipWaiting()))
-})
+self.addEventListener('install', () => { self.skipWaiting() })
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    const names = await caches.keys()
-    await Promise.all(names.filter(n => !n.startsWith(VERSION)).map(n => caches.delete(n)))
+    const keys = await caches.keys()
+    const old = keys.filter(k => !k.startsWith(VERSION))
+    await Promise.all(old.map(k => caches.delete(k)))
     await self.clients.claim()
+    // Upgrading from an older version: reload open pages once so they run the new app
+    if (old.length) {
+      const windows = await self.clients.matchAll({ type: 'window' })
+      windows.forEach(client => { try { client.navigate(client.url) } catch (e) { /* ignore */ } })
+    }
   })())
 })
 
-async function openShell(event) {
-  const cached = await (await caches.open(SHELL)).match('/')
-  if (cached) { event.waitUntil(refreshShell().catch(() => {})); return cached }
-  try {
-    const res = await fetch(event.request)
-    event.waitUntil(refreshShell().catch(() => {}))
-    return res
-  } catch (e) {
-    return new Response('You are offline. Please connect to the internet once.', { status: 503, headers: { 'Content-Type': 'text/plain' } })
-  }
-}
-
-async function cacheFirst(req, cacheName) {
-  const cache = await caches.open(cacheName)
-  const hit = await cache.match(req)
-  if (hit) return hit
-  const res = await fetch(req)
-  if (res.ok || res.type === 'opaque') cache.put(req, res.clone())
-  return res
-}
-
-async function trim(cache) {
+async function trim(cache, max) {
   const keys = await cache.keys()
-  if (keys.length > MAX_IMAGES) await Promise.all(keys.slice(0, keys.length - MAX_IMAGES).map(k => cache.delete(k)))
-}
-
-// Cloudinary links never change for a given photo, so saved copies are always right
-async function cachedImage(event) {
-  const cache = await caches.open(IMAGES)
-  const url = event.request.url
-  const hit = await cache.match(url)
-  if (hit) return hit
-  try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit' })
-    if (res.ok) { await cache.put(url, res.clone()); event.waitUntil(trim(cache)) }
-    return res
-  } catch (e) {
-    return fetch(event.request)
-  }
+  for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i])
 }
 
 self.addEventListener('fetch', event => {
   const req = event.request
-  if (req.method !== 'GET') return
+  if (req.method !== 'GET' || req.headers.has('range')) return
   const url = new URL(req.url)
-  if (req.headers.has('range') || req.destination === 'video' || req.destination === 'audio') return
 
-  if (req.mode === 'navigate' && url.origin === self.location.origin) { event.respondWith(openShell(event)); return }
-  if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')) { event.respondWith(cacheFirst(req, ASSETS)); return }
-  if (url.hostname === 'res.cloudinary.com' && req.destination === 'image') { event.respondWith(cachedImage(event)); return }
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') { event.respondWith(cacheFirst(req, FONTS)); return }
+  if (req.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const res = await fetch(req)
+        if (res.ok && url.origin === self.location.origin) {
+          const cache = await caches.open(PAGES)
+          cache.put('/__shell', res.clone())
+        }
+        return res
+      } catch (e) {
+        const cache = await caches.open(PAGES)
+        return (await cache.match('/__shell')) || Response.error()
+      }
+    })())
+    return
+  }
+
+  if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')) {
+    event.respondWith((async () => {
+      const cache = await caches.open(ASSETS)
+      const hit = await cache.match(req)
+      if (hit) return hit
+      const res = await fetch(req)
+      if (res.ok) cache.put(req, res.clone())
+      return res
+    })())
+    return
+  }
+
+  if (req.destination === 'image' && url.hostname === 'res.cloudinary.com') {
+    event.respondWith((async () => {
+      const cache = await caches.open(IMAGES)
+      const hit = await cache.match(req)
+      if (hit) return hit
+      const res = await fetch(req)
+      if (res && (res.ok || res.type === 'opaque')) {
+        cache.put(req, res.clone()).then(() => trim(cache, MAX_IMAGES)).catch(() => {})
+      }
+      return res
+    })())
+  }
 })

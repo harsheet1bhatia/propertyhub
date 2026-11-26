@@ -7,7 +7,10 @@ import './pwa.css'
 ================================================================ */
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {})
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
+      // look for a new version every time the app is opened again
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}) })
+    }).catch(() => {})
   })
 }
 

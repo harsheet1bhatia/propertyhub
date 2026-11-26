@@ -1993,7 +1993,7 @@ function App() {
 
             {detailsModal}
             {previewModal}
-            <footer className="app-footer">Contact Harsheet for Any Update · <a href="tel:7717463674">7717463674</a></footer>
+            <footer className="app-footer">Contact Harsheet for Any Update · <a href="tel:7717463674">7717463674</a><small className="ph-version" style={{ opacity: 0.5 }}> · v6</small></footer>
           </section>
         </main>
         <BottomNav items={[
@@ -2219,7 +2219,7 @@ function App() {
               </div>
             </>
           )}
-          <footer className="app-footer">Contact Harsheet · <a href="tel:7717463674">7717463674</a></footer>
+          <footer className="app-footer">Contact Harsheet · <a href="tel:7717463674">7717463674</a><small className="ph-version" style={{ opacity: 0.5 }}> · v6</small></footer>
         </section>
       </main>
 
